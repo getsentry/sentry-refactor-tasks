@@ -1,0 +1,34 @@
+{
+  "name": "frontend-tsc",
+  "version": "0.1.0",
+  "bin": {
+    "frontend-tsc": "./src/index.ts"
+  },
+  "type": "module",
+  "scripts": {
+    "start": "node --experimental-strip-types src/index.ts",
+    "check": "tsgo --noEmit",
+    "fmt": "oxfmt .",
+    "fmt:check": "oxfmt --check .",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix ."
+  },
+  "dependencies": {
+    "@sentry/node": "^9.0.0",
+    "chalk": "^5.4.0",
+    "commander": "^13.0.0",
+    "fast-glob": "^3.3.0",
+    "p-limit": "^6.2.0",
+    "yaml": "^2.7.0",
+    "zod": "^3.24.0",
+    "zod-to-json-schema": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@typescript/native-preview": "latest",
+    "oxfmt": "latest",
+    "oxlint": "latest",
+    "typescript": "^5.8.0"
+  },
+  "packageManager": "pnpm@10.30.2"
+}
