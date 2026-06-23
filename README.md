@@ -14,7 +14,8 @@ See [docs/data-flow.md](docs/data-flow.md) for an end-to-end diagram
 - [pnpm](https://pnpm.io/) (`packageManager` is pinned in `package.json`)
 - The [`claude`](https://docs.anthropic.com/en/docs/claude-code) CLI, installed
   and authenticated — the LLM detection path shells out to `claude --print`
-- A local clone of each target repo (referenced by `path` in its `repo.yaml`)
+- Git access (SSH or HTTPS) to each target repo's `git_url` — the CLI clones it
+  itself into `checkouts/<name>/` and updates it to the latest revision per run
 
 ## Install
 
@@ -69,12 +70,15 @@ node --experimental-strip-types src/index.ts scan-and-report sentry -p no-class-
 Each repo lives under `repos/<name>/` with a `repo.yaml`:
 
 ```yaml
-repo: getsentry/sentry          # GitHub owner/name (used for permalinks)
-path: /Users/you/code/sentry    # absolute path to your local clone
-sentry_dsn: https://...         # DSN findings are reported to
-default_model: haiku            # haiku | sonnet | opus
-scan_concurrency: 4             # parallel LLM batches
+repo: getsentry/sentry                    # GitHub owner/name (used for permalinks)
+git_url: git@github.com:getsentry/sentry.git  # cloned into checkouts/<name>/
+sentry_dsn: https://...                   # DSN findings are reported to
+default_model: haiku                      # haiku | sonnet | opus
+scan_concurrency: 4                       # parallel LLM batches
 ```
+
+The CLI clones `git_url` into `checkouts/<name>/` on first run, and on every
+later run fetches and hard-resets it to the latest revision before scanning.
 
 ## Writing a convention
 

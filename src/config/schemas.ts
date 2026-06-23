@@ -24,13 +24,19 @@ export type Pattern = z.infer<typeof PatternSchema>;
 
 export const RepoConfigSchema = z.object({
   repo: z.string(),
-  path: z.string(),
+  git_url: z.string(),
   sentry_dsn: z.string().url(),
   default_model: z.enum(["haiku", "sonnet", "opus"]).default("haiku"),
   scan_concurrency: z.number().int().positive().default(4),
 });
 
 export type RepoConfig = z.infer<typeof RepoConfigSchema>;
+
+/**
+ * A {@link RepoConfig} after its target repo has been checked out locally.
+ * `path` is the working directory of the checkout (see `ensureCheckout`).
+ */
+export type CheckedOutRepoConfig = RepoConfig & { path: string };
 
 const FindingSchema = z.object({
   file: z.string(),

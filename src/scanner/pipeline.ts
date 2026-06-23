@@ -1,5 +1,5 @@
 import pLimit from "p-limit";
-import type { Pattern, RepoConfig } from "../config/schemas.ts";
+import type { CheckedOutRepoConfig, Pattern } from "../config/schemas.ts";
 import { exec } from "../utils/exec.ts";
 import { verbose, log } from "../utils/logger.ts";
 import { getFilesToScan } from "./prefilter.ts";
@@ -53,7 +53,7 @@ function batchFiles(files: FileContent[]): FileContent[][] {
 
 async function scanWithDetectCommand(
   pattern: Pattern,
-  config: RepoConfig,
+  config: CheckedOutRepoConfig,
   gitSha: string,
 ): Promise<RawFinding[]> {
   log(`  Using detect command (no LLM)`);
@@ -62,7 +62,7 @@ async function scanWithDetectCommand(
 
 async function scanWithLlm(
   pattern: Pattern,
-  config: RepoConfig,
+  config: CheckedOutRepoConfig,
   repoName: string,
   model: string,
   files: string[],
@@ -126,7 +126,7 @@ async function scanWithLlm(
 
 export async function scanPattern(
   pattern: Pattern,
-  config: RepoConfig,
+  config: CheckedOutRepoConfig,
   repoName: string,
   options: { model?: string; dryRun?: boolean },
 ): Promise<ScanFinding[]> {
@@ -180,7 +180,7 @@ export async function scanPattern(
 
 export async function scanRepo(
   patterns: Pattern[],
-  config: RepoConfig,
+  config: CheckedOutRepoConfig,
   repoName: string,
   options: { model?: string; dryRun?: boolean; patternFilter?: string },
 ): Promise<ScanFinding[]> {

@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
-import type { Pattern, RepoConfig } from "../config/schemas.ts";
+import type { CheckedOutRepoConfig, Pattern } from "../config/schemas.ts";
 import { exec } from "../utils/exec.ts";
 import { log, verbose } from "../utils/logger.ts";
 
@@ -8,7 +8,7 @@ function cacheDir(): string {
   return join(import.meta.dirname, "..", "..", "cache");
 }
 
-function buildGenerationPrompt(pattern: Pattern, config: RepoConfig): string {
+function buildGenerationPrompt(pattern: Pattern, config: CheckedOutRepoConfig): string {
   let prompt = `Given this code pattern description, generate a single shell command (using grep, ripgrep, find, or similar) that finds files likely containing this pattern.
 
 The command should:
@@ -35,7 +35,7 @@ Output ONLY the shell command, nothing else. No explanation, no markdown fences.
 
 export async function generatePrefilterCommand(
   pattern: Pattern,
-  config: RepoConfig,
+  config: CheckedOutRepoConfig,
   repoName: string,
 ): Promise<string> {
   const prompt = buildGenerationPrompt(pattern, config);
@@ -59,7 +59,7 @@ export async function generatePrefilterCommand(
 
 export async function generateAllCommands(
   patterns: Pattern[],
-  config: RepoConfig,
+  config: CheckedOutRepoConfig,
   repoName: string,
 ): Promise<void> {
   const needsGeneration = patterns.filter((p) => !p.prefilter);

@@ -1,7 +1,6 @@
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
-import type { Pattern } from "../config/schemas.ts";
-import type { RepoConfig } from "../config/schemas.ts";
+import type { CheckedOutRepoConfig, Pattern } from "../config/schemas.ts";
 import { execShell } from "../utils/exec.ts";
 import { findFiles } from "../utils/glob.ts";
 import { verbose } from "../utils/logger.ts";
@@ -47,7 +46,7 @@ async function runPrefilterCommand(command: string, repoPath: string): Promise<s
 
 export async function getFilesToScan(
   pattern: Pattern,
-  config: RepoConfig,
+  config: CheckedOutRepoConfig,
   repoName: string,
   _yamlPath?: string,
 ): Promise<string[]> {

@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { relative } from "node:path";
-import type { Pattern, RepoConfig } from "../config/schemas.ts";
+import type { CheckedOutRepoConfig, Pattern } from "../config/schemas.ts";
 import { execShellPermissive } from "../utils/exec.ts";
 import { verbose, log } from "../utils/logger.ts";
 import type { RawFinding } from "./result.ts";
@@ -28,7 +28,7 @@ function extractSnippet(fileContent: string, line: number, endLine: number): str
 
 export async function runDetectCommand(
   pattern: Pattern,
-  config: RepoConfig,
+  config: CheckedOutRepoConfig,
 ): Promise<RawFinding[]> {
   const scannerDir = import.meta.dirname;
   const command = pattern

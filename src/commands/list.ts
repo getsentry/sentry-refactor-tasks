@@ -11,7 +11,7 @@ export async function listCommand(repoName?: string): Promise<void> {
     for (const dir of dirs) {
       try {
         const config = await loadRepoConfig(dir);
-        console.log(`  ${dir} → ${config.repo} (${config.path})`);
+        console.log(`  ${dir} → ${config.repo} (${config.git_url})`);
       } catch {
         console.log(`  ${dir} → (invalid config)`);
       }
