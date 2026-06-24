@@ -104,13 +104,63 @@ include: ["static/app/**/*.tsx"]
 exclude: ["**/*.test.*"]
 prefilter: "grep -rl -E 'extends (React\\.)?(Pure)?Component' {repo_path}/static/app/"
 # Lint path (bypasses the LLM): exact, fast, deterministic
-# detect_command: "node ... eslint-json-runner.ts {repo_path} <rule> static/app"
+# detect_command: "bash {convention_dir}/no-derived-state.detect.sh {repo_path}"
 ```
 
 Two detection paths:
 
-- **LLM path** — `prefilter` (a shell command, `{repo_path}` is substituted) or
-  `include`/`exclude` globs narrow the file set, then Claude judges each file
-  against `detect`/`examples`. Results are cached by file content hash.
+- **LLM path** — `prefilter` (a shell command) or `include`/`exclude` globs
+  narrow the file set, then Claude judges each file against `detect`/`examples`.
+  Results are cached by file content hash.
 - **Lint path** — set `detect_command` to run a tool (e.g. ESLint) directly. No
   LLM is called and line numbers come straight from the tool.
+
+In both shell commands these tokens are substituted: `{repo_path}` (the
+checkout dir), `{convention_dir}` (this repo's `conventions/` folder — use it to
+reference sidecar scripts/configs), and `{scanner_dir}` (`src/scanner`).
+
+### Detection output (stdout shape)
+
+The two paths read different things from the command's **stdout**. In both
+cases, write any install/progress noise to **stderr** (e.g. `pnpm install …
+1>&2`) so it doesn't corrupt stdout.
+
+**`prefilter` → a newline-separated list of absolute file paths.** Each line is
+one candidate file the LLM will then judge. Blank lines are ignored; no output
+(or a non-zero exit) means "no candidates". This is exactly what
+`grep -rl … {repo_path}/static/app/` prints:
+
+```text
+/abs/checkout/static/app/views/foo.tsx
+/abs/checkout/static/app/components/bar.tsx
+```
+
+**`detect_command` → a JSON array of per-file results.** The LLM is skipped
+entirely. The scanner turns *every* message into a finding (so emit only the
+messages you want reported), taking the line numbers and `message` text
+straight from the tool:
+
+```json
+[
+  {
+    "filePath": "/abs/checkout/static/app/views/foo.tsx",
+    "messages": [
+      {
+        "ruleId": "react-you-might-not-need-an-effect/no-derived-state",
+        "message": "Avoid storing derived state. Instead, compute \"x\" during render",
+        "line": 104,
+        "endLine": 104
+      }
+    ]
+  }
+]
+```
+
+Per file: `filePath` is absolute; files with an empty `messages` array are
+ignored. Per message: `line` and `message` are required (`message` becomes the
+finding's explanation), `endLine` is optional (defaults to `line`), and
+`ruleId` is optional/informational. Print `[]` when there are no violations.
+
+`repos/sentry/conventions/no-derived-state.detect.sh` is a worked example: it
+installs its pinned eslint plugin, writes a standalone eslint config, and runs
+the shared `eslint-json-runner.ts` (which sits beside it) to emit this JSON.

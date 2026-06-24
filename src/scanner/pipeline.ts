@@ -54,10 +54,10 @@ function batchFiles(files: FileContent[]): FileContent[][] {
 async function scanWithDetectCommand(
   pattern: Pattern,
   config: CheckedOutRepoConfig,
-  gitSha: string,
+  repoName: string,
 ): Promise<RawFinding[]> {
   log(`  Using detect command (no LLM)`);
-  return runDetectCommand(pattern, config);
+  return runDetectCommand(pattern, config, repoName);
 }
 
 async function scanWithLlm(
@@ -171,7 +171,7 @@ export async function scanPattern(
     return [];
   }
 
-  const rawFindings = await scanWithDetectCommand(pattern, config, gitSha);
+  const rawFindings = await scanWithDetectCommand(pattern, config, repoName);
   const hydrated = rawFindings.map((f) => hydrateFinding(f, pattern, config.repo, gitSha));
   const deduped = deduplicateFindings(hydrated);
   log(`  Found ${deduped.length} violations`);

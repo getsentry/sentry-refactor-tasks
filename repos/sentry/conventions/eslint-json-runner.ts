@@ -1,16 +1,20 @@
-#!/usr/bin/env node --experimental-strip-types
+#!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { writeFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
 import fg from "fast-glob";
 
+// Generic eslint-as-detector. The caller supplies an eslint flat config (which
+// is where any repo-/plugin-specific setup lives) plus the rule id to report
+// on. This script just resolves the file set, runs eslint with that config,
+// and emits the matching violations as JSON. It contains nothing specific to
+// any one repo or plugin.
 const repoPath = process.argv[2];
 const rule = process.argv[3];
-const scanPaths = process.argv.slice(4);
+const configPath = process.argv[4];
+const scanPaths = process.argv.slice(5);
 
-if (!repoPath || !rule || scanPaths.length === 0) {
-  console.error("Usage: eslint-json-runner <repo-path> <rule-id> <path...>");
+if (!repoPath || !rule || !configPath || scanPaths.length === 0) {
+  console.error("Usage: eslint-json-runner <repo-path> <rule-id> <config-path> <path...>");
   process.exit(1);
 }
 
@@ -27,34 +31,9 @@ if (files.length === 0) {
   process.exit(0);
 }
 
-// Run eslint with a standalone flat config that loads only this rule's plugin
-// and enables only this rule. The target repo's own eslint.config may be
-// written for a different version of the plugin (different rule names), so we
-// deliberately bypass it with --no-config-lookup. The config lives inside the
-// repo so its imports resolve from the repo's node_modules, where the pinned
-// plugin version (installed by the convention's detect_command) lives.
-//
-// Inline eslint-disable directives are still honored (no --no-inline-config),
-// so findings match what the repo's own lint run would report.
-const namespace = rule.split("/")[0];
-const pluginPackage = `eslint-plugin-${namespace}`;
-const configPath = join(repoPath, `.eslint-${namespace}.config.mjs`);
-
-writeFileSync(
-  configPath,
-  `import parser from '@typescript-eslint/parser';
-import plugin from '${pluginPackage}';
-export default [
-  {
-    files: ['**/*.{ts,tsx}'],
-    languageOptions: { parser, parserOptions: { ecmaFeatures: { jsx: true }, sourceType: 'module' } },
-    plugins: { '${namespace}': plugin },
-    rules: { '${rule}': 'error' },
-  },
-];
-`,
-);
-
+// Use only the supplied config (--no-config-lookup) so detection is independent
+// of the target repo's own eslint setup. Inline eslint-disable directives are
+// still honored (no --no-inline-config), so findings match the repo's own lint.
 let rawOutput: string;
 try {
   rawOutput = execFileSync(
@@ -78,8 +57,6 @@ try {
   );
 } catch (err: any) {
   rawOutput = err.stdout ?? "";
-} finally {
-  rmSync(configPath, { force: true });
 }
 
 if (!rawOutput) {

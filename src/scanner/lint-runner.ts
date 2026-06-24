@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { relative } from "node:path";
+import { join, relative } from "node:path";
 import type { CheckedOutRepoConfig, Pattern } from "../config/schemas.ts";
 import { execShellPermissive } from "../utils/exec.ts";
 import { verbose, log } from "../utils/logger.ts";
@@ -29,11 +29,14 @@ function extractSnippet(fileContent: string, line: number, endLine: number): str
 export async function runDetectCommand(
   pattern: Pattern,
   config: CheckedOutRepoConfig,
+  repoName: string,
 ): Promise<RawFinding[]> {
   const scannerDir = import.meta.dirname;
+  const conventionDir = join(scannerDir, "..", "..", "repos", repoName, "conventions");
   const command = pattern
     .detect_command!.replace(/\{repo_path\}/g, config.path)
-    .replace(/\{scanner_dir\}/g, scannerDir);
+    .replace(/\{scanner_dir\}/g, scannerDir)
+    .replace(/\{convention_dir\}/g, conventionDir);
   verbose(`Running detect command: ${command}`);
 
   const { stdout } = await execShellPermissive(command, {
