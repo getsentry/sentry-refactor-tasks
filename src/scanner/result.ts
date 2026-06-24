@@ -48,10 +48,7 @@ export function hydrateFinding(
   };
 }
 
-export function correctLineNumbers(
-  finding: RawFinding,
-  fileContent: string,
-): RawFinding {
+export function correctLineNumbers(finding: RawFinding, fileContent: string): RawFinding {
   const snippetLines = finding.snippet.trim().split("\n");
   const firstLine = snippetLines[0].trim();
   if (!firstLine) return finding;
