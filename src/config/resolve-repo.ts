@@ -1,5 +1,7 @@
 import { stat } from "node:fs/promises";
-import { dirname, join, parse as parsePath } from "node:path";
+import { basename, dirname, join, parse as parsePath } from "node:path";
+import { exec } from "../utils/exec.ts";
+import { verbose } from "../utils/logger.ts";
 import { CONFIG_DIR_NAME } from "./paths.ts";
 import { loadRepoConfig } from "./load-repo-config.ts";
 import type { ResolvedRepoConfig } from "./schemas.ts";
@@ -34,12 +36,41 @@ export async function findRepoRoot(startDir: string): Promise<string> {
 }
 
 /**
+ * Extract the GitHub "owner/name" slug from a git remote URL, e.g.
+ * `git@github.com:getsentry/sentry.git` or
+ * `https://github.com/getsentry/sentry` → `getsentry/sentry`.
+ */
+export function parseRepoSlug(remoteUrl: string): string | null {
+  const match = remoteUrl.trim().match(/[:/]([^/]+\/[^/]+?)(?:\.git)?\/?$/);
+  return match ? match[1] : null;
+}
+
+/**
+ * Determine the repo's "owner/name" from its git origin remote. Falls back to
+ * the directory name when there's no usable remote (permalinks won't resolve,
+ * but scanning still works).
+ */
+async function resolveRepoName(repoRoot: string): Promise<string> {
+  try {
+    const { stdout } = await exec("git", ["-C", repoRoot, "remote", "get-url", "origin"]);
+    const slug = parseRepoSlug(stdout);
+    if (slug) return slug;
+    verbose(`Could not parse owner/name from origin remote: ${stdout.trim()}`);
+  } catch {
+    verbose(`No git origin remote in ${repoRoot}; falling back to directory name`);
+  }
+  return basename(repoRoot);
+}
+
+/**
  * Resolve the repo to operate on from a starting directory. Returns the parsed
  * `repo.yaml` augmented with `path` (the repo root, which is also the scan
- * target — scanning happens in place, with no clone).
+ * target — scanning happens in place, with no clone) and `repo` (the
+ * owner/name slug derived from the checkout's git origin remote).
  */
 export async function resolveRepo(startDir: string): Promise<ResolvedRepoConfig> {
   const path = await findRepoRoot(startDir);
   const config = await loadRepoConfig(path);
-  return { ...config, path };
+  const repo = await resolveRepoName(path);
+  return { ...config, path, repo };
 }

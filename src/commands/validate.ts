@@ -13,8 +13,8 @@ export async function validateCommand(options: { cwd?: string }): Promise<void> 
   log(`Validating ${root}...`);
 
   try {
-    const config = await loadRepoConfig(root);
-    log(`  repo.yaml: OK (${config.repo})`);
+    await loadRepoConfig(root);
+    log(`  repo.yaml: OK`);
   } catch (e) {
     error(`  repo.yaml: ${e instanceof Error ? e.message : String(e)}`);
     errorCount++;

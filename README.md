@@ -107,15 +107,15 @@ my-repo/
 `repo.yaml` holds repo-level settings:
 
 ```yaml
-repo: getsentry/sentry # GitHub owner/name (used for issue permalinks)
 sentry_dsn: https://... # DSN findings are reported to
 default_model: haiku # haiku | sonnet | opus
 scan_concurrency: 4 # parallel LLM batches
-# git_url: optional, informational only — scanning runs in place, no clone
 ```
 
 The CLI walks up from the current directory to find `.sentry-refactor-tasks/`,
 then scans that repo's working tree in place — it never clones or mutates it.
+The `owner/name` slug used for issue permalinks is read from the checkout's git
+`origin` remote, so it isn't configured here.
 
 ## Writing a convention
 
