@@ -1,0 +1,12 @@
+changelog: CHANGELOG.md
+changelogPolicy: auto
+preReleaseCommand: bash bin/bump-version.sh
+targets:
+  - name: github
+    previewReleases: true
+    tagOnly: false
+
+  # NPM package target
+  - name: npm
+    id: "@sentry/refactor-tasks"
+    includeNames: /^sentry-refactor-tasks-\d.*\.tgz$/

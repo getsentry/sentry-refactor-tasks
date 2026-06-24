@@ -1,0 +1,47 @@
+# Builds the npm tarball on every push to main / release branches and uploads it
+# as an artifact named after the commit SHA. Craft's npm target (see .craft.yml)
+# downloads this artifact for the release commit and publishes it to npm.
+
+name: Build
+
+on:
+  push:
+    branches: ["main", "release/*"]
+  workflow_dispatch:
+
+jobs:
+  build-pack:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+
+      - name: Setup Node
+        uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Format check
+        run: pnpm run fmt:check
+
+      - name: Typecheck
+        run: pnpm run check
+
+      - name: Pack npm tarball
+        run: pnpm pack --pack-destination dist
+
+      - name: Archive artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ github.sha }}
+          path: ${{ github.workspace }}/dist/*.tgz

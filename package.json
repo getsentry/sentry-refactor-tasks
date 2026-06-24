@@ -1,12 +1,42 @@
 {
-  "name": "frontend-tsc",
+  "name": "@sentry/refactor-tasks",
   "version": "0.1.0",
-  "bin": {
-    "frontend-tsc": "./src/index.ts"
+  "private": false,
+  "description": "LLM-powered code-convention scanner that reports refactor tasks to Sentry for Seer to fix",
+  "keywords": [
+    "codemod",
+    "convention",
+    "lint",
+    "refactor",
+    "seer",
+    "sentry"
+  ],
+  "homepage": "https://github.com/getsentry/sentry-refactor-tasks",
+  "bugs": {
+    "url": "https://github.com/getsentry/sentry-refactor-tasks/issues"
   },
+  "license": "MIT",
+  "author": "Sentry",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getsentry/sentry-refactor-tasks.git"
+  },
+  "bin": {
+    "refactor-tasks": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "repos",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "start": "node --experimental-strip-types src/index.ts",
+    "start": "node src/index.ts",
     "check": "tsgo --noEmit",
     "fmt": "oxfmt .",
     "fmt:check": "oxfmt --check .",
@@ -29,6 +59,9 @@
     "oxfmt": "latest",
     "oxlint": "latest",
     "typescript": "^5.8.0"
+  },
+  "engines": {
+    "node": ">=24"
   },
   "packageManager": "pnpm@10.30.2"
 }

@@ -1,13 +1,14 @@
-#!/usr/bin/env node --experimental-strip-types
+#!/usr/bin/env node
 import { Command } from "commander";
 import { setVerbose } from "./utils/logger.ts";
+import pkg from "../package.json" with { type: "json" };
 
 const program = new Command();
 
 program
-  .name("frontend-tsc")
-  .description("LLM-powered code convention scanner for the Frontend TSC")
-  .version("0.1.0");
+  .name("refactor-tasks")
+  .description("LLM-powered code convention scanner that reports refactor tasks to Sentry")
+  .version(pkg.version);
 
 program
   .command("list")

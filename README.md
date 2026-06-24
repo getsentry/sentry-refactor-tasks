@@ -10,7 +10,7 @@ See [docs/data-flow.md](docs/data-flow.md) for an end-to-end diagram
 
 ## Prerequisites
 
-- Node v24+ (the CLI runs TypeScript directly via `--experimental-strip-types`)
+- Node v24+ (the CLI runs TypeScript directly — Node strips types natively)
 - [pnpm](https://pnpm.io/) (`packageManager` is pinned in `package.json`)
 - The [`claude`](https://docs.anthropic.com/en/docs/claude-code) CLI, installed
   and authenticated — the LLM detection path shells out to `claude --print`
@@ -19,27 +19,37 @@ See [docs/data-flow.md](docs/data-flow.md) for an end-to-end diagram
 
 ## Install
 
+Published to npm as [`@sentry/refactor-tasks`](https://www.npmjs.com/package/@sentry/refactor-tasks).
+Run it without installing:
+
 ```bash
-pnpm install
+npx @sentry/refactor-tasks <command> [args]
 ```
 
-All commands run through the entrypoint:
+Or install the `refactor-tasks` CLI globally:
 
 ```bash
-node --experimental-strip-types src/index.ts <command> [args]
-# or: pnpm start <command> [args]
+npm install -g @sentry/refactor-tasks
+refactor-tasks <command> [args]
+```
+
+### From a clone (for development)
+
+```bash
+pnpm install
+pnpm start <command> [args]   # alias for: node src/index.ts
 ```
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `list [repo]` | List configured repos, or the conventions for one repo |
-| `validate [repo]` | Validate `repo.yaml` and all convention files against the schema |
-| `scan <repo> [pattern]` | Run conventions against a repo and print findings |
-| `scan-and-report <repo>` | Scan and send findings to Sentry in one step |
-| `report <results-file> --dsn <dsn>` | Send a saved findings JSON to Sentry |
-| `generate-commands <repo>` | Use the LLM to generate prefilter shell commands |
+| Command                             | Description                                                      |
+| ----------------------------------- | ---------------------------------------------------------------- |
+| `list [repo]`                       | List configured repos, or the conventions for one repo           |
+| `validate [repo]`                   | Validate `repo.yaml` and all convention files against the schema |
+| `scan <repo> [pattern]`             | Run conventions against a repo and print findings                |
+| `scan-and-report <repo>`            | Scan and send findings to Sentry in one step                     |
+| `report <results-file> --dsn <dsn>` | Send a saved findings JSON to Sentry                             |
+| `generate-commands <repo>`          | Use the LLM to generate prefilter shell commands                 |
 
 Common options:
 
@@ -52,29 +62,31 @@ Common options:
 
 ```bash
 # See what's configured
-node --experimental-strip-types src/index.ts list
-node --experimental-strip-types src/index.ts list sentry
+refactor-tasks list
+refactor-tasks list sentry
 
 # Validate configs before scanning
-node --experimental-strip-types src/index.ts validate sentry
+refactor-tasks validate sentry
 
 # Preview candidate files for one convention (no LLM cost)
-node --experimental-strip-types src/index.ts scan sentry no-class-components --dry-run
+refactor-tasks scan sentry no-class-components --dry-run
 
 # Scan a single convention and report results to Sentry
-node --experimental-strip-types src/index.ts scan-and-report sentry -p no-class-components -v
+refactor-tasks scan-and-report sentry -p no-class-components -v
 ```
+
+(From a clone, swap `refactor-tasks` for `pnpm start`.)
 
 ## Configuring a target repo
 
 Each repo lives under `repos/<name>/` with a `repo.yaml`:
 
 ```yaml
-repo: getsentry/sentry                    # GitHub owner/name (used for permalinks)
-git_url: git@github.com:getsentry/sentry.git  # cloned into checkouts/<name>/
-sentry_dsn: https://...                   # DSN findings are reported to
-default_model: haiku                      # haiku | sonnet | opus
-scan_concurrency: 4                       # parallel LLM batches
+repo: getsentry/sentry # GitHub owner/name (used for permalinks)
+git_url: git@github.com:getsentry/sentry.git # cloned into checkouts/<name>/
+sentry_dsn: https://... # DSN findings are reported to
+default_model: haiku # haiku | sonnet | opus
+scan_concurrency: 4 # parallel LLM batches
 ```
 
 The CLI clones `git_url` into `checkouts/<name>/` on first run, and on every
@@ -86,16 +98,16 @@ Conventions are YAML files in `repos/<name>/conventions/*.yaml`. Each is
 validated against the schema in `src/config/schemas.ts`:
 
 ```yaml
-name: no-class-components       # kebab-case, unique
-severity: warning               # error | warning | info
+name: no-class-components # kebab-case, unique
+severity: warning # error | warning | info
 tags: [react, migration, hooks]
-why: |                          # shown in the Sentry issue ("Why this matters")
+why: | # shown in the Sentry issue ("Why this matters")
   ...
-detect: |                       # instructions the LLM uses to flag violations
+detect: | # instructions the LLM uses to flag violations
   ...
-fix: |                          # remediation guidance (Seer reads this)
+fix: | # remediation guidance (Seer reads this)
   ...
-examples:                       # optional, sharpens LLM precision
+examples: # optional, sharpens LLM precision
   bad: ["class Foo extends Component {}"]
   good: ["function Foo() {}"]
 # --- choose ONE detection path ---
@@ -136,7 +148,7 @@ one candidate file the LLM will then judge. Blank lines are ignored; no output
 ```
 
 **`detect_command` → a JSON array of per-file results.** The LLM is skipped
-entirely. The scanner turns *every* message into a finding (so emit only the
+entirely. The scanner turns _every_ message into a finding (so emit only the
 messages you want reported), taking the line numbers and `message` text
 straight from the tool:
 
