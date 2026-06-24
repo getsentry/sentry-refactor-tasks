@@ -26,7 +26,6 @@
   },
   "files": [
     "src",
-    "repos",
     "docs",
     "README.md",
     "LICENSE"

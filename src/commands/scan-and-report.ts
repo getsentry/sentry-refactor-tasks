@@ -1,19 +1,19 @@
-import { loadRepoConfig } from "../config/load-repo-config.ts";
-import { ensureCheckout } from "../config/checkout.ts";
+import { resolveRepo } from "../config/resolve-repo.ts";
 import { loadAllPatterns } from "../config/load-pattern.ts";
 import { scanRepo } from "../scanner/pipeline.ts";
 import { printFindings } from "../reporter/console.ts";
 import { reportFindings } from "../reporter/sentry.ts";
 import { log } from "../utils/logger.ts";
 
-export async function scanAndReportCommand(
-  repoName: string,
-  options: { model?: string; patternFilter?: string },
-): Promise<void> {
-  const config = await ensureCheckout(await loadRepoConfig(repoName), repoName);
-  const patterns = await loadAllPatterns(repoName);
+export async function scanAndReportCommand(options: {
+  model?: string;
+  patternFilter?: string;
+  cwd?: string;
+}): Promise<void> {
+  const config = await resolveRepo(options.cwd ?? process.cwd());
+  const patterns = await loadAllPatterns(config.path);
 
-  const findings = await scanRepo(patterns, config, repoName, {
+  const findings = await scanRepo(patterns, config, {
     model: options.model,
     patternFilter: options.patternFilter,
   });

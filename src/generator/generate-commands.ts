@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
-import type { CheckedOutRepoConfig, Pattern } from "../config/schemas.ts";
+import type { ResolvedRepoConfig, Pattern } from "../config/schemas.ts";
+import { repoSlug } from "../scanner/scan-cache.ts";
 import { exec } from "../utils/exec.ts";
 import { log, verbose } from "../utils/logger.ts";
 
@@ -8,7 +9,7 @@ function cacheDir(): string {
   return join(import.meta.dirname, "..", "..", "cache");
 }
 
-function buildGenerationPrompt(pattern: Pattern, config: CheckedOutRepoConfig): string {
+function buildGenerationPrompt(pattern: Pattern, config: ResolvedRepoConfig): string {
   let prompt = `Given this code pattern description, generate a single shell command (using grep, ripgrep, find, or similar) that finds files likely containing this pattern.
 
 The command should:
@@ -35,8 +36,7 @@ Output ONLY the shell command, nothing else. No explanation, no markdown fences.
 
 export async function generatePrefilterCommand(
   pattern: Pattern,
-  config: CheckedOutRepoConfig,
-  repoName: string,
+  config: ResolvedRepoConfig,
 ): Promise<string> {
   const prompt = buildGenerationPrompt(pattern, config);
 
@@ -49,7 +49,7 @@ export async function generatePrefilterCommand(
   const response = JSON.parse(stdout);
   const command = (response.result ?? stdout).trim();
 
-  const cachePath = join(cacheDir(), repoName, `${pattern.name}.sh`);
+  const cachePath = join(cacheDir(), repoSlug(config.repo), `${pattern.name}.sh`);
   await mkdir(dirname(cachePath), { recursive: true });
   await writeFile(cachePath, command, "utf-8");
 
@@ -59,8 +59,7 @@ export async function generatePrefilterCommand(
 
 export async function generateAllCommands(
   patterns: Pattern[],
-  config: CheckedOutRepoConfig,
-  repoName: string,
+  config: ResolvedRepoConfig,
 ): Promise<void> {
   const needsGeneration = patterns.filter((p) => !p.prefilter);
 
@@ -72,6 +71,6 @@ export async function generateAllCommands(
   log(`Generating prefilter commands for ${needsGeneration.length} patterns...`);
 
   for (const pattern of needsGeneration) {
-    await generatePrefilterCommand(pattern, config, repoName);
+    await generatePrefilterCommand(pattern, config);
   }
 }

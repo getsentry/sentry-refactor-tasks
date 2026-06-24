@@ -6,7 +6,7 @@ ultimately an automated fix PR.
 ```mermaid
 flowchart TD
     subgraph authoring["1. Authoring"]
-        YAML["Convention YAML<br/>repos/&lt;repo&gt;/conventions/*.yaml<br/>(why, detect, fix, examples,<br/>prefilter / detect_command)"]
+        YAML["Convention YAML<br/>&lt;repo&gt;/.sentry-refactor-tasks/conventions/*.yaml<br/>(why, detect, fix, examples,<br/>prefilter / detect_command)"]
         VALIDATE["loadPattern → PatternSchema (Zod)<br/>validate command"]
         YAML --> VALIDATE
     end

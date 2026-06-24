@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { setVerbose } from "./utils/logger.ts";
+import { setVerbose, error } from "./utils/logger.ts";
 import pkg from "../package.json" with { type: "json" };
 
 const program = new Command();
+
+const CWD_OPTION = ["-C, --cwd <dir>", "repo directory to operate on (defaults to cwd)"] as const;
 
 program
   .name("refactor-tasks")
@@ -12,48 +14,47 @@ program
 
 program
   .command("list")
-  .description("List configured repos, or patterns for a repo")
-  .argument("[repo]", "repo name to list patterns for")
-  .action(async (repo?: string) => {
+  .description("List the conventions configured for the repo")
+  .option(...CWD_OPTION)
+  .action(async (opts: { cwd?: string }) => {
     const { listCommand } = await import("./commands/list.ts");
-    await listCommand(repo);
+    await listCommand(opts);
   });
 
 program
   .command("validate")
-  .description("Validate YAML configs and pattern definitions")
-  .argument("[repo]", "repo name to validate (or all)")
-  .action(async (repo?: string) => {
+  .description("Validate the repo's repo.yaml and convention definitions")
+  .option(...CWD_OPTION)
+  .action(async (opts: { cwd?: string }) => {
     const { validateCommand } = await import("./commands/validate.ts");
-    await validateCommand(repo);
+    await validateCommand(opts);
   });
 
 program
   .command("generate-commands")
   .description("Use LLM to generate prefilter shell commands")
-  .argument("<repo>", "repo name")
-  .action(async (repo: string) => {
+  .option(...CWD_OPTION)
+  .action(async (opts: { cwd?: string }) => {
     const { generateCommandsCommand } = await import("./commands/generate-commands.ts");
-    await generateCommandsCommand(repo);
+    await generateCommandsCommand(opts);
   });
 
 program
   .command("scan")
-  .description("Run patterns against a repo")
-  .argument("<repo>", "repo name")
-  .argument("[pattern]", "specific pattern name (or all)")
+  .description("Run conventions against the repo")
+  .argument("[pattern]", "specific convention name (or all)")
   .option("-m, --model <model>", "model override (haiku/sonnet/opus)")
   .option("--dry-run", "show candidate files without scanning")
+  .option(...CWD_OPTION)
   .option("-v, --verbose", "verbose output")
   .action(
     async (
-      repo: string,
       pattern: string | undefined,
-      opts: { model?: string; dryRun?: boolean; verbose?: boolean },
+      opts: { model?: string; dryRun?: boolean; cwd?: string; verbose?: boolean },
     ) => {
       if (opts.verbose) setVerbose(true);
       const { scanCommand } = await import("./commands/scan.ts");
-      await scanCommand(repo, pattern, opts);
+      await scanCommand(pattern, opts);
     },
   );
 
@@ -70,17 +71,21 @@ program
 program
   .command("scan-and-report")
   .description("Scan and report to Sentry in one step")
-  .argument("<repo>", "repo name")
   .option("-m, --model <model>", "model override (haiku/sonnet/opus)")
-  .option("-p, --pattern <pattern>", "specific pattern name")
+  .option("-p, --pattern <pattern>", "specific convention name")
+  .option(...CWD_OPTION)
   .option("-v, --verbose", "verbose output")
-  .action(async (repo: string, opts: { model?: string; pattern?: string; verbose?: boolean }) => {
+  .action(async (opts: { model?: string; pattern?: string; cwd?: string; verbose?: boolean }) => {
     if (opts.verbose) setVerbose(true);
     const { scanAndReportCommand } = await import("./commands/scan-and-report.ts");
-    await scanAndReportCommand(repo, {
+    await scanAndReportCommand({
       model: opts.model,
       patternFilter: opts.pattern,
+      cwd: opts.cwd,
     });
   });
 
-program.parse();
+program.parseAsync().catch((err: unknown) => {
+  error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
+});

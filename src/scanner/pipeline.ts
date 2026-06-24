@@ -1,5 +1,5 @@
 import pLimit from "p-limit";
-import type { CheckedOutRepoConfig, Pattern } from "../config/schemas.ts";
+import type { ResolvedRepoConfig, Pattern } from "../config/schemas.ts";
 import { exec } from "../utils/exec.ts";
 import { verbose, log } from "../utils/logger.ts";
 import { getFilesToScan } from "./prefilter.ts";
@@ -12,7 +12,7 @@ import {
   type ScanFinding,
   type RawFinding,
 } from "./result.ts";
-import { ScanCache, hashContent } from "./scan-cache.ts";
+import { ScanCache, hashContent, repoSlug } from "./scan-cache.ts";
 
 async function resolveGitSha(repoPath: string): Promise<string> {
   const { stdout } = await exec("git", ["rev-parse", "HEAD"], { cwd: repoPath });
@@ -53,21 +53,19 @@ function batchFiles(files: FileContent[]): FileContent[][] {
 
 async function scanWithDetectCommand(
   pattern: Pattern,
-  config: CheckedOutRepoConfig,
-  repoName: string,
+  config: ResolvedRepoConfig,
 ): Promise<RawFinding[]> {
   log(`  Using detect command (no LLM)`);
-  return runDetectCommand(pattern, config, repoName);
+  return runDetectCommand(pattern, config);
 }
 
 async function scanWithLlm(
   pattern: Pattern,
-  config: CheckedOutRepoConfig,
-  repoName: string,
+  config: ResolvedRepoConfig,
   model: string,
   files: string[],
 ): Promise<{ findings: RawFinding[]; contentsByRelPath: Map<string, string> }> {
-  const cache = new ScanCache(repoName, pattern.name);
+  const cache = new ScanCache(repoSlug(config.repo), pattern.name);
   await cache.load();
 
   const allFileContents = await readFilesForAnalysis(files, config.path);
@@ -126,8 +124,7 @@ async function scanWithLlm(
 
 export async function scanPattern(
   pattern: Pattern,
-  config: CheckedOutRepoConfig,
-  repoName: string,
+  config: ResolvedRepoConfig,
   options: { model?: string; dryRun?: boolean },
 ): Promise<ScanFinding[]> {
   const model = options.model ?? config.default_model;
@@ -137,7 +134,7 @@ export async function scanPattern(
   log(`Scanning for "${pattern.name}" in ${config.repo} @ ${gitSha.slice(0, 8)}...`);
 
   if (!usesDetectCommand) {
-    const files = await getFilesToScan(pattern, config, repoName);
+    const files = await getFilesToScan(pattern, config, repoSlug(config.repo));
     log(`  Found ${files.length} candidate files`);
 
     if (options.dryRun) {
@@ -148,13 +145,7 @@ export async function scanPattern(
 
     if (files.length === 0) return [];
 
-    const { findings, contentsByRelPath } = await scanWithLlm(
-      pattern,
-      config,
-      repoName,
-      model,
-      files,
-    );
+    const { findings, contentsByRelPath } = await scanWithLlm(pattern, config, model, files);
     const corrected = findings.map((f) => {
       const content = contentsByRelPath.get(f.file);
       return content ? correctLineNumbers(f, content) : f;
@@ -171,7 +162,7 @@ export async function scanPattern(
     return [];
   }
 
-  const rawFindings = await scanWithDetectCommand(pattern, config, repoName);
+  const rawFindings = await scanWithDetectCommand(pattern, config);
   const hydrated = rawFindings.map((f) => hydrateFinding(f, pattern, config.repo, gitSha));
   const deduped = deduplicateFindings(hydrated);
   log(`  Found ${deduped.length} violations`);
@@ -180,8 +171,7 @@ export async function scanPattern(
 
 export async function scanRepo(
   patterns: Pattern[],
-  config: CheckedOutRepoConfig,
-  repoName: string,
+  config: ResolvedRepoConfig,
   options: { model?: string; dryRun?: boolean; patternFilter?: string },
 ): Promise<ScanFinding[]> {
   const toScan = options.patternFilter
@@ -195,7 +185,7 @@ export async function scanRepo(
 
   const allFindings: ScanFinding[] = [];
   for (const pattern of toScan) {
-    const findings = await scanPattern(pattern, config, repoName, options);
+    const findings = await scanPattern(pattern, config, options);
     allFindings.push(...findings);
   }
 

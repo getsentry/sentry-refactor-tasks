@@ -17,8 +17,13 @@ function cacheDir(): string {
   return join(import.meta.dirname, "..", "..", "cache");
 }
 
-function cachePath(repoName: string, patternName: string): string {
-  return join(cacheDir(), repoName, "scan-results", `${patternName}.json`);
+function cachePath(slug: string, patternName: string): string {
+  return join(cacheDir(), slug, "scan-results", `${patternName}.json`);
+}
+
+/** Filesystem-safe key for a repo (e.g. "getsentry/sentry" → "getsentry-sentry"). */
+export function repoSlug(repo: string): string {
+  return repo.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
 export function hashContent(content: string): string {
@@ -30,8 +35,8 @@ export class ScanCache {
   private dirty = false;
   private filePath: string;
 
-  constructor(repoName: string, patternName: string) {
-    this.filePath = cachePath(repoName, patternName);
+  constructor(slug: string, patternName: string) {
+    this.filePath = cachePath(slug, patternName);
   }
 
   async load(): Promise<void> {

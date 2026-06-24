@@ -24,7 +24,9 @@ export type Pattern = z.infer<typeof PatternSchema>;
 
 export const RepoConfigSchema = z.object({
   repo: z.string(),
-  git_url: z.string(),
+  // Informational only (used for issue permalinks). Scanning happens in place
+  // against the local repo, so no clone URL is required.
+  git_url: z.string().optional(),
   sentry_dsn: z.string().url(),
   default_model: z.enum(["haiku", "sonnet", "opus"]).default("haiku"),
   scan_concurrency: z.number().int().positive().default(4),
@@ -33,10 +35,11 @@ export const RepoConfigSchema = z.object({
 export type RepoConfig = z.infer<typeof RepoConfigSchema>;
 
 /**
- * A {@link RepoConfig} after its target repo has been checked out locally.
- * `path` is the working directory of the checkout (see `ensureCheckout`).
+ * A {@link RepoConfig} resolved against a local repo. `path` is the repo root
+ * (the directory containing the `.sentry-refactor-tasks/` config folder) and is
+ * also the scan target — scanning runs in place, with no clone.
  */
-export type CheckedOutRepoConfig = RepoConfig & { path: string };
+export type ResolvedRepoConfig = RepoConfig & { path: string };
 
 const FindingSchema = z.object({
   file: z.string(),

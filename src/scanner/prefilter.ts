@@ -1,6 +1,6 @@
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
-import type { CheckedOutRepoConfig, Pattern } from "../config/schemas.ts";
+import type { ResolvedRepoConfig, Pattern } from "../config/schemas.ts";
 import { execShell } from "../utils/exec.ts";
 import { findFiles } from "../utils/glob.ts";
 import { verbose } from "../utils/logger.ts";
@@ -9,16 +9,12 @@ function cacheDir(): string {
   return join(import.meta.dirname, "..", "..", "cache");
 }
 
-function cachedCommandPath(repoName: string, patternName: string): string {
-  return join(cacheDir(), repoName, `${patternName}.sh`);
+function cachedCommandPath(slug: string, patternName: string): string {
+  return join(cacheDir(), slug, `${patternName}.sh`);
 }
 
-async function isCacheValid(
-  repoName: string,
-  patternName: string,
-  yamlPath: string,
-): Promise<boolean> {
-  const cachePath = cachedCommandPath(repoName, patternName);
+async function isCacheValid(slug: string, patternName: string, yamlPath: string): Promise<boolean> {
+  const cachePath = cachedCommandPath(slug, patternName);
   try {
     const [cacheStat, yamlStat] = await Promise.all([stat(cachePath), stat(yamlPath)]);
     return cacheStat.mtimeMs > yamlStat.mtimeMs;
@@ -46,8 +42,8 @@ async function runPrefilterCommand(command: string, repoPath: string): Promise<s
 
 export async function getFilesToScan(
   pattern: Pattern,
-  config: CheckedOutRepoConfig,
-  repoName: string,
+  config: ResolvedRepoConfig,
+  slug: string,
   _yamlPath?: string,
 ): Promise<string[]> {
   if (pattern.prefilter) {
@@ -56,10 +52,10 @@ export async function getFilesToScan(
   }
 
   if (_yamlPath) {
-    const cacheValid = await isCacheValid(repoName, pattern.name, _yamlPath);
+    const cacheValid = await isCacheValid(slug, pattern.name, _yamlPath);
     if (cacheValid) {
       const { readFile } = await import("node:fs/promises");
-      const cachePath = cachedCommandPath(repoName, pattern.name);
+      const cachePath = cachedCommandPath(slug, pattern.name);
       const command = (await readFile(cachePath, "utf-8")).trim();
       verbose(`Using cached prefilter for "${pattern.name}"`);
       return runPrefilterCommand(command, config.path);
