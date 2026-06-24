@@ -1,3 +1,6 @@
+# Prepares a release with getsentry/craft. Run it from the Actions tab
+# ("Release" → "Run workflow") or with: gh workflow run release.yml --ref main
+# Leave "version" empty (or "auto") to let craft pick the next version.
 name: Release
 
 on:
