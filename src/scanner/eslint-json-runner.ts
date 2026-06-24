@@ -1,6 +1,8 @@
 #!/usr/bin/env node --experimental-strip-types
 
 import { execFileSync } from "node:child_process";
+import { writeFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import fg from "fast-glob";
 
 const repoPath = process.argv[2];
@@ -25,15 +27,43 @@ if (files.length === 0) {
   process.exit(0);
 }
 
+// Run eslint with a standalone flat config that loads only this rule's plugin
+// and enables only this rule. The target repo's own eslint.config may be
+// written for a different version of the plugin (different rule names), so we
+// deliberately bypass it with --no-config-lookup. The config lives inside the
+// repo so its imports resolve from the repo's node_modules, where the pinned
+// plugin version (installed by the convention's detect_command) lives.
+//
+// Inline eslint-disable directives are still honored (no --no-inline-config),
+// so findings match what the repo's own lint run would report.
+const namespace = rule.split("/")[0];
+const pluginPackage = `eslint-plugin-${namespace}`;
+const configPath = join(repoPath, `.eslint-${namespace}.config.mjs`);
+
+writeFileSync(
+  configPath,
+  `import parser from '@typescript-eslint/parser';
+import plugin from '${pluginPackage}';
+export default [
+  {
+    files: ['**/*.{ts,tsx}'],
+    languageOptions: { parser, parserOptions: { ecmaFeatures: { jsx: true }, sourceType: 'module' } },
+    plugins: { '${namespace}': plugin },
+    rules: { '${rule}': 'error' },
+  },
+];
+`,
+);
+
 let rawOutput: string;
 try {
   rawOutput = execFileSync(
     "npx",
     [
       "eslint",
-      "--no-inline-config",
-      "--rule",
-      JSON.stringify({ [rule]: "error" }),
+      "--config",
+      configPath,
+      "--no-config-lookup",
       "--format",
       "json",
       "--no-warn-ignored",
@@ -48,6 +78,8 @@ try {
   );
 } catch (err: any) {
   rawOutput = err.stdout ?? "";
+} finally {
+  rmSync(configPath, { force: true });
 }
 
 if (!rawOutput) {

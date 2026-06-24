@@ -61,4 +61,4 @@ examples:
     - "const visibleTodos = useMemo(() => getFilteredTodos(todos, filter), [todos, filter]);"
     - "const selection = useMemo(() => items.find(i => i.id === selectedId) ?? null, [items, selectedId]);"
 
-detect_command: "node --experimental-strip-types {scanner_dir}/eslint-json-runner.ts {repo_path} react-you-might-not-need-an-effect/no-derived-state static/app"
+detect_command: "pnpm install --frozen-lockfile 1>&2 && pnpm add -D eslint-plugin-react-you-might-not-need-an-effect@1.0.1 1>&2 && pnpm exec node {scanner_dir}/eslint-json-runner.ts {repo_path} react-you-might-not-need-an-effect/no-derived-state static/app"
