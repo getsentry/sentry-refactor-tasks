@@ -67,6 +67,20 @@ Common options:
 - `-p, --pattern <name>` — (scan-and-report) limit to one convention
 - `-v, --verbose` — verbose logging
 
+## Cache location
+
+Scan results (keyed by file content hash) and generated prefilter commands are
+cached on disk at a stable, user-level path so they persist across runs —
+including `npx`, whose package install is ephemeral:
+
+```
+$XDG_CACHE_HOME/sentry-refactor-tasks/    # if XDG_CACHE_HOME is set
+~/.cache/sentry-refactor-tasks/           # otherwise
+```
+
+Entries are namespaced per repo (`<owner>-<repo>/`). To force a clean re-scan,
+delete that directory.
+
 ## Examples
 
 ```bash
@@ -148,7 +162,7 @@ Two detection paths:
 
 - **LLM path** — `prefilter` (a shell command) or `include`/`exclude` globs
   narrow the file set, then Claude judges each file against `detect`/`examples`.
-  Results are cached by file content hash.
+  Results are cached by file content hash (see [Cache location](#cache-location)).
 - **Lint path** — set `detect_command` to run a tool (e.g. ESLint) directly. No
   LLM is called and line numbers come straight from the tool.
 
