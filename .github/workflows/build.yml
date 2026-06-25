@@ -1,12 +1,19 @@
-# Builds the npm tarball on every push to main / release branches and uploads it
-# as an artifact named after the commit SHA. Craft's npm target (see .craft.yml)
-# downloads this artifact for the release commit and publishes it to npm.
+# Builds the npm tarball and runs lint/format/typecheck.
+#
+# On push to main / release branches, the tarball is uploaded as an artifact
+# named after the commit SHA; craft's npm target (see .craft.yml) downloads it
+# for the release commit and publishes it to npm.
+#
+# On pull requests the same build runs as a check, but the artifact is not
+# archived — PRs only need to prove the package builds, not produce a release
+# tarball.
 
 name: Build
 
 on:
   push:
     branches: ["main", "release/*"]
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -41,6 +48,8 @@ jobs:
         run: pnpm pack --pack-destination dist
 
       - name: Archive artifacts
+        # Release artifacts are only needed off push builds; PRs just build.
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ github.sha }}
