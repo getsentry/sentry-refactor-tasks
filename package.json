@@ -22,9 +22,10 @@
     "url": "git+https://github.com/getsentry/sentry-refactor-tasks.git"
   },
   "bin": {
-    "refactor-tasks": "./src/index.ts"
+    "refactor-tasks": "./lib/index.js"
   },
   "files": [
+    "lib",
     "src",
     "docs",
     "README.md",
@@ -36,6 +37,8 @@
   },
   "scripts": {
     "start": "node src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "pnpm run build",
     "check": "tsgo --noEmit",
     "fmt": "oxfmt .",
     "fmt:check": "oxfmt --check .",
