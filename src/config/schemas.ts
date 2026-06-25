@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
 
 export const PatternSchema = z.object({
   name: z.string().regex(/^[a-z0-9-]+$/),
@@ -54,6 +53,6 @@ export const FindingsResponseSchema = z.object({
 
 export type FindingsResponse = z.infer<typeof FindingsResponseSchema>;
 
-export const findingsJsonSchema = zodToJsonSchema(FindingsResponseSchema, {
-  target: "jsonSchema7",
+export const findingsJsonSchema = z.toJSONSchema(FindingsResponseSchema, {
+  target: "draft-7",
 });
