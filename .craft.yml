@@ -1,3 +1,6 @@
+# Pin to the craft version run by .github/workflows/release.yml (getsentry/craft
+# v2.19.0). Required at >= 2.14.0 to enable auto-versioning.
+minVersion: 2.19.0
 changelog: CHANGELOG.md
 changelogPolicy: auto
 preReleaseCommand: bash bin/bump-version.sh
