@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import type { RawFinding } from "./result.ts";
+import { cacheDir } from "../utils/cache-dir.ts";
 import { verbose } from "../utils/logger.ts";
 
 interface CacheEntry {
@@ -11,10 +12,6 @@ interface CacheEntry {
 
 interface CacheFile {
   [relativePath: string]: CacheEntry;
-}
-
-function cacheDir(): string {
-  return join(import.meta.dirname, "..", "..", "cache");
 }
 
 function cachePath(slug: string, patternName: string): string {

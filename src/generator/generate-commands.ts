@@ -2,12 +2,9 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import type { ResolvedRepoConfig, Pattern } from "../config/schemas.ts";
 import { repoSlug } from "../scanner/scan-cache.ts";
+import { cacheDir } from "../utils/cache-dir.ts";
 import { exec } from "../utils/exec.ts";
 import { log, verbose } from "../utils/logger.ts";
-
-function cacheDir(): string {
-  return join(import.meta.dirname, "..", "..", "cache");
-}
 
 function buildGenerationPrompt(pattern: Pattern, config: ResolvedRepoConfig): string {
   let prompt = `Given this code pattern description, generate a single shell command (using grep, ripgrep, find, or similar) that finds files likely containing this pattern.

@@ -1,13 +1,10 @@
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { ResolvedRepoConfig, Pattern } from "../config/schemas.ts";
+import { cacheDir } from "../utils/cache-dir.ts";
 import { execShell } from "../utils/exec.ts";
 import { findFiles } from "../utils/glob.ts";
 import { verbose } from "../utils/logger.ts";
-
-function cacheDir(): string {
-  return join(import.meta.dirname, "..", "..", "cache");
-}
 
 function cachedCommandPath(slug: string, patternName: string): string {
   return join(cacheDir(), slug, `${patternName}.sh`);
