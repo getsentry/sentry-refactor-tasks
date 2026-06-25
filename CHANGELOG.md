@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.4
+
+### Bug Fixes 🐛
+
+- (cache) Store cache at a stable user-level path by @ryan953 in [#10](https://github.com/getsentry/sentry-refactor-tasks/pull/10)
+
 ## 0.0.3
 
 ### Bug Fixes 🐛
