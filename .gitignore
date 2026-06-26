@@ -1,5 +1,6 @@
 .claude/worktrees
 node_modules/
+cache/
 dist/
 lib/
 checkouts/
