@@ -115,52 +115,93 @@ function resolveChunkSize(explicit?: number): number {
   return Number.isFinite(requested) && requested > 0 ? Math.floor(requested) : 0;
 }
 
+/**
+ * Streaming reporter: accepts findings incrementally via {@link add} and sends
+ * them to Sentry as soon as a full chunk has accumulated, so reporting overlaps
+ * with scanning instead of waiting for the whole scan to finish. Chunk
+ * boundaries span successive `add` calls, so a partial chunk left by one batch
+ * of findings is topped up by the next. Call {@link finish} once scanning is
+ * done to send any remainder and do a final flush.
+ *
+ * With `chunkSize <= 0` (the single-batch default) nothing is sent until
+ * {@link finish}, matching the send-everything-at-once behavior.
+ */
+export class FindingReporter {
+  private readonly chunkSize: number;
+  private buffer: ScanFinding[] = [];
+  private sent = 0;
+  private flushTimeouts = 0;
+  private sentAnyChunk = false;
+
+  constructor(dsn: string, options: ReportOptions = {}) {
+    initSentry(dsn);
+    this.chunkSize = resolveChunkSize(options.chunkSize);
+  }
+
+  /** Buffer findings, sending any now-complete chunks (when `chunkSize > 0`). */
+  async add(findings: ScanFinding[]): Promise<void> {
+    if (findings.length === 0) return;
+    this.buffer.push(...findings);
+    if (this.chunkSize <= 0) return;
+    while (this.buffer.length >= this.chunkSize) {
+      await this.sendChunk(this.buffer.splice(0, this.chunkSize));
+    }
+  }
+
+  /** Send whatever is buffered and do a final flush. */
+  async finish(): Promise<void> {
+    if (this.chunkSize <= 0) {
+      for (const finding of this.buffer) {
+        reportFinding(finding);
+      }
+      this.sent += this.buffer.length;
+      this.buffer = [];
+      log(`Reported ${this.sent} findings to Sentry (single batch)`);
+      await Sentry.flush(FLUSH_TIMEOUT_MS);
+      return;
+    }
+
+    if (this.buffer.length > 0) {
+      await this.sendChunk(this.buffer.splice(0));
+    }
+
+    if (this.flushTimeouts > 0) {
+      log(
+        `Warning: ${this.flushTimeouts} chunk flush(es) timed out — some findings may have been dropped. ` +
+          `Increase REFACTOR_TASKS_SENTRY_CHUNK_DELAY_MS or the project's rate limit and re-run.`,
+      );
+    }
+  }
+
+  private async sendChunk(chunk: ScanFinding[]): Promise<void> {
+    // Pace between chunks (but not before the first) so the transport can apply
+    // 429 backoff between bursts instead of dropping a firehose of events.
+    if (this.sentAnyChunk) {
+      await sleep(CHUNK_DELAY_MS);
+    }
+    this.sentAnyChunk = true;
+
+    for (const finding of chunk) {
+      reportFinding(finding);
+    }
+    this.sent += chunk.length;
+
+    const drained = await Sentry.flush(FLUSH_TIMEOUT_MS);
+    if (!drained) {
+      this.flushTimeouts++;
+      verbose(`Flush timed out after ${this.sent} findings`);
+    }
+
+    log(`Reported ${this.sent} findings to Sentry`);
+  }
+}
+
 export async function reportFindings(
   findings: ScanFinding[],
   dsn: string,
   options: ReportOptions = {},
 ): Promise<void> {
-  initSentry(dsn);
-
-  const chunkSize = resolveChunkSize(options.chunkSize);
-
-  if (chunkSize <= 0) {
-    for (const finding of findings) {
-      reportFinding(finding);
-    }
-    log(`Reported ${findings.length} findings to Sentry (single batch)`);
-    await Sentry.flush(FLUSH_TIMEOUT_MS);
-    return;
-  }
-
-  const total = findings.length;
-  let flushTimeouts = 0;
-
-  for (let start = 0; start < total; start += chunkSize) {
-    const chunk = findings.slice(start, start + chunkSize);
-    for (const finding of chunk) {
-      reportFinding(finding);
-    }
-
-    // Flush each chunk before queuing the next so the transport can apply
-    // 429 backoff between bursts instead of dropping a firehose of events.
-    const drained = await Sentry.flush(FLUSH_TIMEOUT_MS);
-    if (!drained) {
-      flushTimeouts++;
-      verbose(`Flush timed out for chunk ending at ${Math.min(start + chunkSize, total)}/${total}`);
-    }
-
-    log(`Reported ${Math.min(start + chunkSize, total)}/${total} findings to Sentry`);
-
-    if (start + chunkSize < total) {
-      await sleep(CHUNK_DELAY_MS);
-    }
-  }
-
-  if (flushTimeouts > 0) {
-    log(
-      `Warning: ${flushTimeouts} chunk flush(es) timed out — some findings may have been dropped. ` +
-        `Increase REFACTOR_TASKS_SENTRY_CHUNK_DELAY_MS or the project's rate limit and re-run.`,
-    );
-  }
+  const reporter = new FindingReporter(dsn, options);
+  await reporter.add(findings);
+  await reporter.finish();
 }

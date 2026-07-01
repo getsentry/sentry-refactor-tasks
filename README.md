@@ -155,7 +155,11 @@ The `chunk_size` setting controls this:
   env var, then `0`. So the effective default is a single batch unless you opt
   into chunking via config, the env var, or the flag below.
 
-The `report` command takes the same control as a `--chunk-size <n>` flag.
+During `scan-and-report`, findings **stream** to Sentry as each convention
+finishes scanning — a chunk is sent as soon as enough accumulate (counting
+across conventions), so reporting overlaps with the rest of the scan rather than
+waiting for it to finish. The `report` command takes the same control as a
+`--chunk-size <n>` flag.
 
 Check or change spike protection for your project under **Settings → Projects →
 [your project] → Spike Protection** (URL:
