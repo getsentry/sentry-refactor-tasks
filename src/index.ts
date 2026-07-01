@@ -63,9 +63,14 @@ program
   .description("Send scan results to Sentry")
   .argument("<results-file>", "path to scan results JSON")
   .requiredOption("--dsn <dsn>", "Sentry DSN")
-  .action(async (resultsFile: string, opts: { dsn: string }) => {
+  .option(
+    "--chunk-size <n>",
+    "findings per Sentry batch; 0 sends all at once (only safe with spike protection disabled)",
+    (v) => Number.parseInt(v, 10),
+  )
+  .action(async (resultsFile: string, opts: { dsn: string; chunkSize?: number }) => {
     const { reportCommand } = await import("./commands/report.ts");
-    await reportCommand(resultsFile, opts.dsn);
+    await reportCommand(resultsFile, opts.dsn, opts.chunkSize);
   });
 
 program

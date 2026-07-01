@@ -21,7 +21,7 @@ export async function scanAndReportCommand(options: {
   printFindings(findings);
 
   if (findings.length > 0) {
-    await reportFindings(findings, config.sentry_dsn);
+    await reportFindings(findings, config.sentry_dsn, { chunkSize: config.chunk_size });
   } else {
     log("No findings to report to Sentry.");
   }
