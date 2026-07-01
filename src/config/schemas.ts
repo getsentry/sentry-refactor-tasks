@@ -25,6 +25,12 @@ export const RepoConfigSchema = z.object({
   sentry_dsn: z.string().url(),
   default_model: z.enum(["haiku", "sonnet", "opus"]).default("haiku"),
   scan_concurrency: z.number().int().positive().default(4),
+  // Findings per Sentry batch. Left unset, it falls back to the
+  // REFACTOR_TASKS_SENTRY_CHUNK_SIZE env var, then 0. `0` sends everything at
+  // once — only safe when the project has spike protection disabled, otherwise
+  // the burst is rate-limited and most findings never become issues. A positive
+  // value sends throttled chunks of that size instead.
+  chunk_size: z.number().int().min(0).optional(),
 });
 
 export type RepoConfig = z.infer<typeof RepoConfigSchema>;
