@@ -127,7 +127,7 @@ my-repo/
 sentry_dsn: https://... # DSN findings are reported to
 default_model: haiku # haiku | sonnet | opus
 scan_concurrency: 4 # parallel LLM batches
-chunk_size: 0 # findings per Sentry batch; 0 = all at once (see "Spike protection")
+chunk_size: 25 # optional; findings per Sentry batch, 0 = all at once (see "Spike protection")
 ```
 
 The CLI walks up from the current directory to find `.sentry-refactor-tasks/`,
@@ -146,11 +146,14 @@ issues created.
 
 The `chunk_size` setting controls this:
 
-- `chunk_size: 0` (the **default**) sends every finding in one batch. Fast, but
-  only safe when the project has spike protection **disabled**.
 - `chunk_size: <n>` (a positive value) sends findings in throttled chunks of
   `n`, flushing after each, so a large scan stays under the spike-protection
   rate limit and every finding lands. Start around `25` if you hit drops.
+- `chunk_size: 0` sends every finding in one batch. Fast, but only safe when the
+  project has spike protection **disabled**.
+- Leaving `chunk_size` unset falls back to the `REFACTOR_TASKS_SENTRY_CHUNK_SIZE`
+  env var, then `0`. So the effective default is a single batch unless you opt
+  into chunking via config, the env var, or the flag below.
 
 The `report` command takes the same control as a `--chunk-size <n>` flag.
 
@@ -161,8 +164,6 @@ Check or change spike protection for your project under **Settings → Projects 
 When chunking (`chunk_size > 0`), the pacing is tunable via env vars for
 projects that need a gentler cadence: `REFACTOR_TASKS_SENTRY_CHUNK_DELAY_MS`
 (default 1000) and `REFACTOR_TASKS_SENTRY_FLUSH_TIMEOUT_MS` (default 30000).
-`REFACTOR_TASKS_SENTRY_CHUNK_SIZE` overrides the chunk size when neither the
-config nor the `--chunk-size` flag is set.
 
 ## Writing a convention
 
