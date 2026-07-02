@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.5
+
+### Bug Fixes 🐛
+
+- (reporter) Chunk Sentry sends to survive spike protection by @ryan953 in [#12](https://github.com/getsentry/sentry-refactor-tasks/pull/12)
+
+### Internal Changes 🔧
+
+- Ignore the cache/ folder by @ryan953 in [#11](https://github.com/getsentry/sentry-refactor-tasks/pull/11)
+
 ## 0.0.4
 
 ### Bug Fixes 🐛
