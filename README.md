@@ -65,6 +65,9 @@ Common options:
 - `-m, --model <haiku\|sonnet\|opus>` — override the repo's `default_model`
 - `--dry-run` — (scan) list candidate files without calling the LLM
 - `-p, --pattern <name>` — (scan-and-report) limit to one convention
+- `--chunk-size <n>` — (report) findings per Sentry batch; `0` (default) sends
+  all at once, a positive value throttles into chunks of that size (see
+  [Spike protection](#spike-protection--chunked-reporting))
 - `-v, --verbose` — verbose logging
 
 ## Cache location
@@ -124,12 +127,47 @@ my-repo/
 sentry_dsn: https://... # DSN findings are reported to
 default_model: haiku # haiku | sonnet | opus
 scan_concurrency: 4 # parallel LLM batches
+chunk_size: 25 # optional; findings per Sentry batch, 0 = all at once (see "Spike protection")
 ```
 
 The CLI walks up from the current directory to find `.sentry-refactor-tasks/`,
 then scans that repo's working tree in place — it never clones or mutates it.
 The `owner/name` slug used for issue permalinks is read from the checkout's git
 `origin` remote, so it isn't configured here.
+
+### Spike protection & chunked reporting
+
+A scan can surface thousands of findings, each reported as a separate Sentry
+event. [Spike protection](https://docs.sentry.io/pricing/quotas/spike-protection/)
+guards a project against sudden bursts of ingest — but that's exactly what a
+large scan looks like, so with it **enabled**, Sentry rate-limits the burst and
+**silently drops most events**: you'll see only a fraction of the expected
+issues created.
+
+The `chunk_size` setting controls this:
+
+- `chunk_size: <n>` (a positive value) sends findings in throttled chunks of
+  `n`, flushing after each, so a large scan stays under the spike-protection
+  rate limit and every finding lands. Start around `25` if you hit drops.
+- `chunk_size: 0` sends every finding in one batch. Fast, but only safe when the
+  project has spike protection **disabled**.
+- Leaving `chunk_size` unset falls back to the `REFACTOR_TASKS_SENTRY_CHUNK_SIZE`
+  env var, then `0`. So the effective default is a single batch unless you opt
+  into chunking via config, the env var, or the flag below.
+
+During `scan-and-report`, findings **stream** to Sentry as each convention
+finishes scanning — a chunk is sent as soon as enough accumulate (counting
+across conventions), so reporting overlaps with the rest of the scan rather than
+waiting for it to finish. The `report` command takes the same control as a
+`--chunk-size <n>` flag.
+
+Check or change spike protection for your project under **Settings → Projects →
+[your project] → Spike Protection** (URL:
+`https://<your-org>.sentry.io/settings/projects/<your-project>/spike-protection/`).
+
+When chunking (`chunk_size > 0`), the pacing is tunable via env vars for
+projects that need a gentler cadence: `REFACTOR_TASKS_SENTRY_CHUNK_DELAY_MS`
+(default 1000) and `REFACTOR_TASKS_SENTRY_FLUSH_TIMEOUT_MS` (default 30000).
 
 ## Writing a convention
 

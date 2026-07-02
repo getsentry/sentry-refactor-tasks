@@ -172,7 +172,15 @@ export async function scanPattern(
 export async function scanRepo(
   patterns: Pattern[],
   config: ResolvedRepoConfig,
-  options: { model?: string; dryRun?: boolean; patternFilter?: string },
+  options: {
+    model?: string;
+    dryRun?: boolean;
+    patternFilter?: string;
+    // Invoked with each pattern's findings as soon as that pattern finishes, so
+    // callers can stream results (e.g. report to Sentry in chunks) instead of
+    // waiting for the whole scan. Awaited, so it also applies backpressure.
+    onFindings?: (findings: ScanFinding[]) => Promise<void> | void;
+  },
 ): Promise<ScanFinding[]> {
   const toScan = options.patternFilter
     ? patterns.filter((p) => p.name === options.patternFilter)
@@ -187,6 +195,9 @@ export async function scanRepo(
   for (const pattern of toScan) {
     const findings = await scanPattern(pattern, config, options);
     allFindings.push(...findings);
+    if (findings.length > 0 && options.onFindings) {
+      await options.onFindings(findings);
+    }
   }
 
   return allFindings;
