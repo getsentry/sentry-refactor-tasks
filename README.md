@@ -16,8 +16,10 @@ See [docs/data-flow.md](docs/data-flow.md) for an end-to-end diagram
 
 - Node v24+ (the CLI runs TypeScript directly — Node strips types natively)
 - [pnpm](https://pnpm.io/) (`packageManager` is pinned in `package.json`)
-- The [`claude`](https://docs.anthropic.com/en/docs/claude-code) CLI, installed
-  and authenticated — the LLM detection path shells out to `claude --print`
+- An inference backend for the LLM detection path (see
+  [Inference backends](#inference-backends)) — either an OpenRouter API key or
+  the local [`claude`](https://docs.anthropic.com/en/docs/claude-code) CLI,
+  installed and authenticated
 - A checkout of the repo you want to scan, with a `.sentry-refactor-tasks/`
   config folder at its root (see [Configuring a target repo](#configuring-a-target-repo)).
   The scanner reads the working tree as-is — it does not clone or update it.
@@ -130,6 +132,40 @@ The CLI walks up from the current directory to find `.sentry-refactor-tasks/`,
 then scans that repo's working tree in place — it never clones or mutates it.
 The `owner/name` slug used for issue permalinks is read from the checkout's git
 `origin` remote, so it isn't configured here.
+
+## Inference backends
+
+The LLM detection path can run against either backend. Selection is driven by
+environment variables — no secrets live in `repo.yaml` or on the command line,
+so API keys don't leak into config files or shell history.
+
+- **OpenRouter** ([openrouter.ai](https://openrouter.ai)) — set
+  `OPENROUTER_API_KEY` and requests go over HTTPS to OpenRouter's
+  OpenAI-compatible API. This is used automatically whenever the key is present.
+- **Local `claude` CLI** — used when no OpenRouter key is set. Shells out to
+  `claude --print`; relies on the binary's own authentication.
+
+To force a backend regardless of what's set, use `INFERENCE_PROVIDER`.
+
+| Variable                 | Purpose                                                            | Default                        |
+| ------------------------ | ------------------------------------------------------------------ | ------------------------------ |
+| `OPENROUTER_API_KEY`     | OpenRouter API key. Its presence enables the OpenRouter backend.   | _(unset → use `claude` CLI)_   |
+| `INFERENCE_PROVIDER`     | Force a backend: `openrouter` or `claude-cli`.                     | auto-detect from the key       |
+| `OPENROUTER_BASE_URL`    | Override the OpenRouter API base URL.                              | `https://openrouter.ai/api/v1` |
+| `OPENROUTER_MODEL_HAIKU` | OpenRouter model ID the `haiku` tier maps to.                      | `anthropic/claude-3.5-haiku`   |
+| `OPENROUTER_MODEL_SONNET`| OpenRouter model ID the `sonnet` tier maps to.                     | `anthropic/claude-sonnet-4`    |
+| `OPENROUTER_MODEL_OPUS`  | OpenRouter model ID the `opus` tier maps to.                       | `anthropic/claude-opus-4`      |
+
+The `default_model` config and `-m/--model` flag still take a tier
+(`haiku`/`sonnet`/`opus`); for OpenRouter each tier is mapped to a model ID via
+the table above. You can also pass a fully qualified OpenRouter model ID (e.g.
+`-m anthropic/claude-opus-4`) to bypass the mapping.
+
+```bash
+# Use OpenRouter (key sourced from the environment, never persisted)
+export OPENROUTER_API_KEY=sk-or-...
+refactor-tasks scan
+```
 
 ## Writing a convention
 

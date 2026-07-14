@@ -40,7 +40,7 @@ export async function findRepoRoot(startDir: string): Promise<string> {
  * `git@github.com:getsentry/sentry.git` or
  * `https://github.com/getsentry/sentry` → `getsentry/sentry`.
  */
-export function parseRepoSlug(remoteUrl: string): string | null {
+function parseRepoSlug(remoteUrl: string): string | null {
   const match = remoteUrl.trim().match(/[:/]([^/]+\/[^/]+?)(?:\.git)?\/?$/);
   return match ? match[1] : null;
 }

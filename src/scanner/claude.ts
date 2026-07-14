@@ -3,7 +3,7 @@ import { relative } from "node:path";
 import type { Pattern } from "../config/schemas.ts";
 import { findingsJsonSchema, FindingsResponseSchema } from "../config/schemas.ts";
 import type { FindingsResponse } from "../config/schemas.ts";
-import { exec } from "../utils/exec.ts";
+import { runInference } from "../inference/index.ts";
 import { verbose } from "../utils/logger.ts";
 
 export interface FileContent {
@@ -59,28 +59,19 @@ export async function analyzeWithClaude(
 ): Promise<FindingsResponse> {
   const prompt = buildPrompt(pattern, files);
   const systemPrompt = buildSystemPrompt();
-  const schema = JSON.stringify(findingsJsonSchema);
 
   verbose(`Analyzing ${files.length} files for pattern "${pattern.name}" with model "${model}"`);
 
-  const { stdout } = await exec(
-    "claude",
-    [
-      "--print",
-      prompt,
-      "--output-format",
-      "json",
-      "--json-schema",
-      schema,
-      "--append-system-prompt",
-      systemPrompt,
-      "--model",
-      model,
-    ],
-    { timeout: 120_000 },
-  );
+  const output = await runInference({
+    prompt,
+    model,
+    system: systemPrompt,
+    jsonSchema: {
+      name: "findings",
+      schema: findingsJsonSchema as Record<string, unknown>,
+    },
+    timeoutMs: 120_000,
+  });
 
-  const response = JSON.parse(stdout);
-  const structured = response.structured_output ?? JSON.parse(response.result);
-  return FindingsResponseSchema.parse(structured);
+  return FindingsResponseSchema.parse(JSON.parse(output));
 }

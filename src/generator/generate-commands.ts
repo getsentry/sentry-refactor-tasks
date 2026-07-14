@@ -3,7 +3,7 @@ import { join, dirname } from "node:path";
 import type { ResolvedRepoConfig, Pattern } from "../config/schemas.ts";
 import { repoSlug } from "../scanner/scan-cache.ts";
 import { cacheDir } from "../utils/cache-dir.ts";
-import { exec } from "../utils/exec.ts";
+import { runInference } from "../inference/index.ts";
 import { log, verbose } from "../utils/logger.ts";
 
 function buildGenerationPrompt(pattern: Pattern, config: ResolvedRepoConfig): string {
@@ -31,7 +31,7 @@ Output ONLY the shell command, nothing else. No explanation, no markdown fences.
   return prompt;
 }
 
-export async function generatePrefilterCommand(
+async function generatePrefilterCommand(
   pattern: Pattern,
   config: ResolvedRepoConfig,
 ): Promise<string> {
@@ -39,12 +39,7 @@ export async function generatePrefilterCommand(
 
   verbose(`Generating prefilter command for "${pattern.name}"`);
 
-  const { stdout } = await exec("claude", ["--print", prompt, "--model", "haiku"], {
-    timeout: 60_000,
-  });
-
-  const response = JSON.parse(stdout);
-  const command = (response.result ?? stdout).trim();
+  const command = (await runInference({ prompt, model: "haiku", timeoutMs: 60_000 })).trim();
 
   const cachePath = join(cacheDir(), repoSlug(config.repo), `${pattern.name}.sh`);
   await mkdir(dirname(cachePath), { recursive: true });

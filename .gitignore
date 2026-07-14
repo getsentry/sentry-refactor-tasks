@@ -5,3 +5,7 @@ dist/
 lib/
 checkouts/
 *.tsbuildinfo
+
+# Local secrets — loaded into the shell by direnv (.envrc), never committed.
+.env
+.direnv/
