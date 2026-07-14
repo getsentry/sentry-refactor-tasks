@@ -2,7 +2,7 @@ import * as Sentry from "@sentry/node";
 import type { ScanFinding } from "../scanner/result.ts";
 import { log, verbose } from "../utils/logger.ts";
 
-export function initSentry(dsn: string): void {
+function initSentry(dsn: string): void {
   Sentry.init({
     dsn,
     defaultIntegrations: false,
@@ -37,7 +37,7 @@ function buildMessage(finding: ScanFinding): string {
   return lines.join("\n");
 }
 
-export function reportFinding(finding: ScanFinding): void {
+function reportFinding(finding: ScanFinding): void {
   Sentry.withScope((scope) => {
     scope.setFingerprint([finding.pattern_name, finding.file, String(finding.line_start)]);
 

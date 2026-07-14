@@ -122,7 +122,7 @@ async function scanWithLlm(
   return { findings: [...cachedFindings, ...llmFindings], contentsByRelPath };
 }
 
-export async function scanPattern(
+async function scanPattern(
   pattern: Pattern,
   config: ResolvedRepoConfig,
   options: { model?: string; dryRun?: boolean },
