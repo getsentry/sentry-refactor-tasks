@@ -1,4 +1,5 @@
 import { resolveRepo } from "../config/resolve-repo.ts";
+import { resolveDsn } from "../config/resolve-dsn.ts";
 import { loadAllPatterns } from "../config/load-pattern.ts";
 import { scanRepo } from "../scanner/pipeline.ts";
 import { printFindings } from "../reporter/console.ts";
@@ -9,14 +10,17 @@ export async function scanAndReportCommand(options: {
   model?: string;
   patternFilter?: string;
   cwd?: string;
+  dsn?: string;
 }): Promise<void> {
+  // Resolve the DSN up front so a missing one fails before any scanning work.
+  const dsn = resolveDsn(options.dsn);
   const config = await resolveRepo(options.cwd ?? process.cwd());
   const patterns = await loadAllPatterns(config.path);
 
   // Stream each pattern's findings to Sentry as it completes: the reporter
   // sends a chunk as soon as enough findings accumulate, so reporting overlaps
   // with scanning instead of waiting for the whole scan to finish.
-  const reporter = new FindingReporter(config.sentry_dsn, { chunkSize: config.chunk_size });
+  const reporter = new FindingReporter(dsn, { chunkSize: config.chunk_size });
 
   const findings = await scanRepo(patterns, config, {
     model: options.model,
