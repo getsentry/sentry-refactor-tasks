@@ -32,7 +32,7 @@ function envIntOptional(name: string): number | undefined {
 const CHUNK_DELAY_MS = envInt("REFACTOR_TASKS_SENTRY_CHUNK_DELAY_MS", 1000);
 const FLUSH_TIMEOUT_MS = envInt("REFACTOR_TASKS_SENTRY_FLUSH_TIMEOUT_MS", 30_000);
 
-export function initSentry(dsn: string): void {
+function initSentry(dsn: string): void {
   Sentry.init({
     dsn,
     defaultIntegrations: false,
@@ -67,7 +67,7 @@ function buildMessage(finding: ScanFinding): string {
   return lines.join("\n");
 }
 
-export function reportFinding(finding: ScanFinding): void {
+function reportFinding(finding: ScanFinding): void {
   Sentry.withScope((scope) => {
     scope.setFingerprint([finding.pattern_name, finding.file, String(finding.line_start)]);
 
