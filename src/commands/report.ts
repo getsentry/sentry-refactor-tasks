@@ -3,7 +3,11 @@ import type { ScanFinding } from "../scanner/result.ts";
 import { reportFindings } from "../reporter/sentry.ts";
 import { error } from "../utils/logger.ts";
 
-export async function reportCommand(resultsFile: string, dsn: string): Promise<void> {
+export async function reportCommand(
+  resultsFile: string,
+  dsn: string,
+  chunkSize?: number,
+): Promise<void> {
   let findings: ScanFinding[];
   try {
     const raw = await readFile(resultsFile, "utf-8");
@@ -19,5 +23,5 @@ export async function reportCommand(resultsFile: string, dsn: string): Promise<v
     return;
   }
 
-  await reportFindings(findings, dsn);
+  await reportFindings(findings, dsn, { chunkSize });
 }
