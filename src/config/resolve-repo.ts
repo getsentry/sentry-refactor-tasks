@@ -3,8 +3,7 @@ import { basename, dirname, join, parse as parsePath } from "node:path";
 import { exec } from "../utils/exec.ts";
 import { verbose } from "../utils/logger.ts";
 import { CONFIG_DIR_NAME } from "./paths.ts";
-import { loadRepoConfig } from "./load-repo-config.ts";
-import type { ResolvedRepoConfig } from "./schemas.ts";
+import { ScanSettingsSchema, type ResolvedRepoConfig, type ScanSettings } from "./schemas.ts";
 
 async function isDir(p: string): Promise<boolean> {
   try {
@@ -31,7 +30,7 @@ export async function findRepoRoot(startDir: string): Promise<string> {
   throw new Error(
     `No ${CONFIG_DIR_NAME}/ directory found in ${startDir} or any parent.\n` +
       `Run this from inside a repo that has a ${CONFIG_DIR_NAME}/ folder ` +
-      `(with repo.yaml and conventions/), or pass --cwd <repo>.`,
+      `(with a conventions/ folder), or pass --cwd <repo>.`,
   );
 }
 
@@ -63,14 +62,25 @@ async function resolveRepoName(repoRoot: string): Promise<string> {
 }
 
 /**
- * Resolve the repo to operate on from a starting directory. Returns the parsed
- * `repo.yaml` augmented with `path` (the repo root, which is also the scan
- * target — scanning happens in place, with no clone) and `repo` (the
- * owner/name slug derived from the checkout's git origin remote).
+ * Read repo-level scan settings from the environment (`INFERENCE_MODEL`,
+ * `SCAN_CONCURRENCY`). Unset values fall back to the schema defaults.
+ */
+function loadScanSettings(): ScanSettings {
+  return ScanSettingsSchema.parse({
+    default_model: process.env.INFERENCE_MODEL,
+    scan_concurrency: process.env.SCAN_CONCURRENCY,
+  });
+}
+
+/**
+ * Resolve the repo to operate on from a starting directory. Returns the scan
+ * settings (from the environment) augmented with `path` (the repo root, which
+ * is also the scan target — scanning happens in place, with no clone) and
+ * `repo` (the owner/name slug derived from the checkout's git origin remote).
  */
 export async function resolveRepo(startDir: string): Promise<ResolvedRepoConfig> {
   const path = await findRepoRoot(startDir);
-  const config = await loadRepoConfig(path);
+  const settings = loadScanSettings();
   const repo = await resolveRepoName(path);
-  return { ...config, path, repo };
+  return { ...settings, path, repo };
 }

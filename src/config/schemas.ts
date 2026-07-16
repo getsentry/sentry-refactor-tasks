@@ -21,22 +21,26 @@ export const PatternSchema = z.object({
 
 export type Pattern = z.infer<typeof PatternSchema>;
 
-export const RepoConfigSchema = z.object({
-  sentry_dsn: z.string().url(),
+/**
+ * Repo-level scan settings, sourced from environment variables rather than a
+ * config file: `INFERENCE_MODEL` and `SCAN_CONCURRENCY`. Both coerce from their
+ * string env values and fall back to the defaults below when unset.
+ */
+export const ScanSettingsSchema = z.object({
   default_model: z.enum(["haiku", "sonnet", "opus"]).default("haiku"),
-  scan_concurrency: z.number().int().positive().default(4),
+  scan_concurrency: z.coerce.number().int().positive().default(4),
 });
 
-export type RepoConfig = z.infer<typeof RepoConfigSchema>;
+export type ScanSettings = z.infer<typeof ScanSettingsSchema>;
 
 /**
- * A {@link RepoConfig} resolved against a local repo. `path` is the repo root
+ * {@link ScanSettings} resolved against a local repo. `path` is the repo root
  * (the directory containing the `.sentry-refactor-tasks/` config folder) and is
  * also the scan target — scanning runs in place, with no clone. `repo` is the
- * GitHub "owner/name" slug, derived from the checkout's git origin remote (not
- * configured in repo.yaml) and used for issue permalinks.
+ * GitHub "owner/name" slug, derived from the checkout's git origin remote and
+ * used for issue permalinks.
  */
-export type ResolvedRepoConfig = RepoConfig & { path: string; repo: string };
+export type ResolvedRepoConfig = ScanSettings & { path: string; repo: string };
 
 const FindingSchema = z.object({
   file: z.string(),

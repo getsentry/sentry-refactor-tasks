@@ -2,8 +2,8 @@ import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { findRepoRoot } from "../config/resolve-repo.ts";
 import { conventionsDir } from "../config/paths.ts";
-import { loadRepoConfig } from "../config/load-repo-config.ts";
 import { loadPattern } from "../config/load-pattern.ts";
+import { ScanSettingsSchema } from "../config/schemas.ts";
 import { log, error } from "../utils/logger.ts";
 
 export async function validateCommand(options: { cwd?: string }): Promise<void> {
@@ -12,11 +12,14 @@ export async function validateCommand(options: { cwd?: string }): Promise<void> 
 
   log(`Validating ${root}...`);
 
-  try {
-    await loadRepoConfig(root);
-    log(`  repo.yaml: OK`);
-  } catch (e) {
-    error(`  repo.yaml: ${e instanceof Error ? e.message : String(e)}`);
+  const settings = ScanSettingsSchema.safeParse({
+    default_model: process.env.INFERENCE_MODEL,
+    scan_concurrency: process.env.SCAN_CONCURRENCY,
+  });
+  if (settings.success) {
+    log(`  settings: OK`);
+  } else {
+    error(`  settings: ${settings.error.message}`);
     errorCount++;
   }
 

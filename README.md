@@ -55,18 +55,19 @@ up to find a `.sentry-refactor-tasks/` folder).
 | Command                             | Description                                                  |
 | ----------------------------------- | ------------------------------------------------------------ |
 | `list`                              | List the conventions configured for the repo                 |
-| `validate`                          | Validate `repo.yaml` and all convention files against schema |
+| `validate`                          | Validate all convention files against schema                 |
 | `scan [pattern]`                    | Run conventions against the repo and print findings          |
 | `scan-and-report`                   | Scan and send findings to Sentry in one step                 |
-| `report <results-file> --dsn <dsn>` | Send a saved findings JSON to Sentry                         |
+| `report <results-file>`             | Send a saved findings JSON to Sentry                         |
 | `generate-commands`                 | Use the LLM to generate prefilter shell commands             |
 
 Common options:
 
 - `-C, --cwd <dir>` — operate on the repo at `<dir>` instead of the current directory
-- `-m, --model <haiku\|sonnet\|opus>` — override the repo's `default_model`
+- `-m, --model <haiku\|sonnet\|opus>` — override `INFERENCE_MODEL`
 - `--dry-run` — (scan) list candidate files without calling the LLM
 - `-p, --pattern <name>` — (scan-and-report) limit to one convention
+- `--dsn <dsn>` — (scan-and-report, report) Sentry DSN; defaults to `SENTRY_DSN`
 - `-v, --verbose` — verbose logging
 
 ## Cache location
@@ -114,19 +115,23 @@ A repo opts in by adding a `.sentry-refactor-tasks/` directory at its root:
 ```
 my-repo/
   .sentry-refactor-tasks/
-    repo.yaml
     conventions/
       no-derived-state.yaml
       ...
 ```
 
-`repo.yaml` holds repo-level settings:
+The folder only needs a `conventions/` directory. Repo-level settings come
+from the environment (or CLI flags):
 
-```yaml
-sentry_dsn: https://... # DSN findings are reported to
-default_model: haiku # haiku | sonnet | opus
-scan_concurrency: 4 # parallel LLM batches
-```
+| Variable           | Purpose                                          | Default                  |
+| ------------------ | ------------------------------------------------ | ------------------------ |
+| `SENTRY_DSN`       | DSN findings are reported to (or pass `--dsn`).  | _(required to report)_   |
+| `INFERENCE_MODEL`  | Model tier: `haiku` \| `sonnet` \| `opus`.       | `haiku`                  |
+| `SCAN_CONCURRENCY` | Parallel LLM batches.                            | `4`                      |
+
+A DSN is only needed when reporting — `list`, `validate`, and `scan` run
+without one. `scan-and-report` and `report` require `--dsn` or `SENTRY_DSN` and
+error clearly if neither is set.
 
 The CLI walks up from the current directory to find `.sentry-refactor-tasks/`,
 then scans that repo's working tree in place — it never clones or mutates it.
@@ -136,7 +141,7 @@ The `owner/name` slug used for issue permalinks is read from the checkout's git
 ## Inference backends
 
 The LLM detection path can run against either backend. Selection is driven by
-environment variables — no secrets live in `repo.yaml` or on the command line,
+environment variables — no secrets live in config files or on the command line,
 so API keys don't leak into config files or shell history.
 
 - **OpenRouter** ([openrouter.ai](https://openrouter.ai)) — set
@@ -156,7 +161,7 @@ To force a backend regardless of what's set, use `INFERENCE_PROVIDER`.
 | `OPENROUTER_MODEL_SONNET`| OpenRouter model ID the `sonnet` tier maps to.                     | `anthropic/claude-sonnet-4`    |
 | `OPENROUTER_MODEL_OPUS`  | OpenRouter model ID the `opus` tier maps to.                       | `anthropic/claude-opus-4`      |
 
-The `default_model` config and `-m/--model` flag still take a tier
+The `INFERENCE_MODEL` env var and `-m/--model` flag still take a tier
 (`haiku`/`sonnet`/`opus`); for OpenRouter each tier is mapped to a model ID via
 the table above. You can also pass a fully qualified OpenRouter model ID (e.g.
 `-m anthropic/claude-opus-4`) to bypass the mapping.

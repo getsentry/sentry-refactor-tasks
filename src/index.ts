@@ -23,7 +23,7 @@ program
 
 program
   .command("validate")
-  .description("Validate the repo's repo.yaml and convention definitions")
+  .description("Validate the repo's convention definitions")
   .option(...CWD_OPTION)
   .action(async (opts: { cwd?: string }) => {
     const { validateCommand } = await import("./commands/validate.ts");
@@ -43,7 +43,7 @@ program
   .command("scan")
   .description("Run conventions against the repo")
   .argument("[pattern]", "specific convention name (or all)")
-  .option("-m, --model <model>", "model override (haiku/sonnet/opus)")
+  .option("-m, --model <model>", "override INFERENCE_MODEL (haiku/sonnet/opus)")
   .option("--dry-run", "show candidate files without scanning")
   .option(...CWD_OPTION)
   .option("-v, --verbose", "verbose output")
@@ -62,8 +62,8 @@ program
   .command("report")
   .description("Send scan results to Sentry")
   .argument("<results-file>", "path to scan results JSON")
-  .requiredOption("--dsn <dsn>", "Sentry DSN")
-  .action(async (resultsFile: string, opts: { dsn: string }) => {
+  .option("--dsn <dsn>", "Sentry DSN (defaults to SENTRY_DSN)")
+  .action(async (resultsFile: string, opts: { dsn?: string }) => {
     const { reportCommand } = await import("./commands/report.ts");
     await reportCommand(resultsFile, opts.dsn);
   });
@@ -71,19 +71,29 @@ program
 program
   .command("scan-and-report")
   .description("Scan and report to Sentry in one step")
-  .option("-m, --model <model>", "model override (haiku/sonnet/opus)")
+  .option("-m, --model <model>", "override INFERENCE_MODEL (haiku/sonnet/opus)")
   .option("-p, --pattern <pattern>", "specific convention name")
+  .option("--dsn <dsn>", "Sentry DSN (defaults to SENTRY_DSN)")
   .option(...CWD_OPTION)
   .option("-v, --verbose", "verbose output")
-  .action(async (opts: { model?: string; pattern?: string; cwd?: string; verbose?: boolean }) => {
-    if (opts.verbose) setVerbose(true);
-    const { scanAndReportCommand } = await import("./commands/scan-and-report.ts");
-    await scanAndReportCommand({
-      model: opts.model,
-      patternFilter: opts.pattern,
-      cwd: opts.cwd,
-    });
-  });
+  .action(
+    async (opts: {
+      model?: string;
+      pattern?: string;
+      dsn?: string;
+      cwd?: string;
+      verbose?: boolean;
+    }) => {
+      if (opts.verbose) setVerbose(true);
+      const { scanAndReportCommand } = await import("./commands/scan-and-report.ts");
+      await scanAndReportCommand({
+        model: opts.model,
+        patternFilter: opts.pattern,
+        cwd: opts.cwd,
+        dsn: opts.dsn,
+      });
+    },
+  );
 
 program.parseAsync().catch((err: unknown) => {
   error(err instanceof Error ? err.message : String(err));

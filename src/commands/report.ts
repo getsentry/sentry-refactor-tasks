@@ -1,9 +1,11 @@
 import { readFile } from "node:fs/promises";
+import { resolveDsn } from "../config/resolve-dsn.ts";
 import type { ScanFinding } from "../scanner/result.ts";
 import { reportFindings } from "../reporter/sentry.ts";
 import { error } from "../utils/logger.ts";
 
-export async function reportCommand(resultsFile: string, dsn: string): Promise<void> {
+export async function reportCommand(resultsFile: string, dsnFlag?: string): Promise<void> {
+  const dsn = resolveDsn(dsnFlag);
   let findings: ScanFinding[];
   try {
     const raw = await readFile(resultsFile, "utf-8");
@@ -21,3 +23,4 @@ export async function reportCommand(resultsFile: string, dsn: string): Promise<v
 
   await reportFindings(findings, dsn);
 }
+
