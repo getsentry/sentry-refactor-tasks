@@ -23,12 +23,19 @@ export type Pattern = z.infer<typeof PatternSchema>;
 
 /**
  * Repo-level scan settings, sourced from environment variables rather than a
- * config file: `INFERENCE_MODEL` and `SCAN_CONCURRENCY`. Both coerce from their
- * string env values and fall back to the defaults below when unset.
+ * config file: `INFERENCE_MODEL`, `SCAN_CONCURRENCY`, and
+ * `REFACTOR_TASKS_SENTRY_CHUNK_SIZE`. Each coerces from its string env value and
+ * falls back to the defaults below when unset.
  */
 export const ScanSettingsSchema = z.object({
   default_model: z.enum(["haiku", "sonnet", "opus"]).default("haiku"),
   scan_concurrency: z.coerce.number().int().positive().default(4),
+  // Findings per Sentry batch. Left unset, it falls back to the
+  // REFACTOR_TASKS_SENTRY_CHUNK_SIZE env var, then 0. `0` sends everything at
+  // once — only safe when the project has spike protection disabled, otherwise
+  // the burst is rate-limited and most findings never become issues. A positive
+  // value sends throttled chunks of that size instead.
+  chunk_size: z.coerce.number().int().min(0).optional(),
 });
 
 export type ScanSettings = z.infer<typeof ScanSettingsSchema>;

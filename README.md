@@ -52,14 +52,14 @@ pnpm start <command> [args]   # alias for: node src/index.ts
 All commands operate on the repo discovered from the current directory (walking
 up to find a `.sentry-refactor-tasks/` folder).
 
-| Command                             | Description                                                  |
-| ----------------------------------- | ------------------------------------------------------------ |
-| `list`                              | List the conventions configured for the repo                 |
-| `validate`                          | Validate all convention files against schema                 |
-| `scan [pattern]`                    | Run conventions against the repo and print findings          |
-| `scan-and-report`                   | Scan and send findings to Sentry in one step                 |
-| `report <results-file>`             | Send a saved findings JSON to Sentry                         |
-| `generate-commands`                 | Use the LLM to generate prefilter shell commands             |
+| Command                 | Description                                         |
+| ----------------------- | --------------------------------------------------- |
+| `list`                  | List the conventions configured for the repo        |
+| `validate`              | Validate all convention files against schema        |
+| `scan [pattern]`        | Run conventions against the repo and print findings |
+| `scan-and-report`       | Scan and send findings to Sentry in one step        |
+| `report <results-file>` | Send a saved findings JSON to Sentry                |
+| `generate-commands`     | Use the LLM to generate prefilter shell commands    |
 
 Common options:
 
@@ -68,6 +68,9 @@ Common options:
 - `--dry-run` — (scan) list candidate files without calling the LLM
 - `-p, --pattern <name>` — (scan-and-report) limit to one convention
 - `--dsn <dsn>` — (scan-and-report, report) Sentry DSN; defaults to `SENTRY_DSN`
+- `--chunk-size <n>` — (report) findings per Sentry batch; `0` (default) sends
+  all at once, a positive value throttles into chunks of that size (see
+  [Spike protection](#spike-protection--chunked-reporting))
 - `-v, --verbose` — verbose logging
 
 ## Cache location
@@ -123,11 +126,12 @@ my-repo/
 The folder only needs a `conventions/` directory. Repo-level settings come
 from the environment (or CLI flags):
 
-| Variable           | Purpose                                          | Default                  |
-| ------------------ | ------------------------------------------------ | ------------------------ |
-| `SENTRY_DSN`       | DSN findings are reported to (or pass `--dsn`).  | _(required to report)_   |
-| `INFERENCE_MODEL`  | Model tier: `haiku` \| `sonnet` \| `opus`.       | `haiku`                  |
-| `SCAN_CONCURRENCY` | Parallel LLM batches.                            | `4`                      |
+| Variable                           | Purpose                                                                                                          | Default                |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| `SENTRY_DSN`                       | DSN findings are reported to (or pass `--dsn`).                                                                  | _(required to report)_ |
+| `INFERENCE_MODEL`                  | Model tier: `haiku` \| `sonnet` \| `opus`.                                                                       | `haiku`                |
+| `SCAN_CONCURRENCY`                 | Parallel LLM batches.                                                                                            | `4`                    |
+| `REFACTOR_TASKS_SENTRY_CHUNK_SIZE` | Findings per Sentry batch; `0` sends all at once (see [Spike protection](#spike-protection--chunked-reporting)). | `0`                    |
 
 A DSN is only needed when reporting — `list`, `validate`, and `scan` run
 without one. `scan-and-report` and `report` require `--dsn` or `SENTRY_DSN` and
@@ -152,14 +156,14 @@ so API keys don't leak into config files or shell history.
 
 To force a backend regardless of what's set, use `INFERENCE_PROVIDER`.
 
-| Variable                 | Purpose                                                            | Default                        |
-| ------------------------ | ------------------------------------------------------------------ | ------------------------------ |
-| `OPENROUTER_API_KEY`     | OpenRouter API key. Its presence enables the OpenRouter backend.   | _(unset → use `claude` CLI)_   |
-| `INFERENCE_PROVIDER`     | Force a backend: `openrouter` or `claude-cli`.                     | auto-detect from the key       |
-| `OPENROUTER_BASE_URL`    | Override the OpenRouter API base URL.                              | `https://openrouter.ai/api/v1` |
-| `OPENROUTER_MODEL_HAIKU` | OpenRouter model ID the `haiku` tier maps to.                      | `anthropic/claude-3.5-haiku`   |
-| `OPENROUTER_MODEL_SONNET`| OpenRouter model ID the `sonnet` tier maps to.                     | `anthropic/claude-sonnet-4`    |
-| `OPENROUTER_MODEL_OPUS`  | OpenRouter model ID the `opus` tier maps to.                       | `anthropic/claude-opus-4`      |
+| Variable                  | Purpose                                                          | Default                        |
+| ------------------------- | ---------------------------------------------------------------- | ------------------------------ |
+| `OPENROUTER_API_KEY`      | OpenRouter API key. Its presence enables the OpenRouter backend. | _(unset → use `claude` CLI)_   |
+| `INFERENCE_PROVIDER`      | Force a backend: `openrouter` or `claude-cli`.                   | auto-detect from the key       |
+| `OPENROUTER_BASE_URL`     | Override the OpenRouter API base URL.                            | `https://openrouter.ai/api/v1` |
+| `OPENROUTER_MODEL_HAIKU`  | OpenRouter model ID the `haiku` tier maps to.                    | `anthropic/claude-3.5-haiku`   |
+| `OPENROUTER_MODEL_SONNET` | OpenRouter model ID the `sonnet` tier maps to.                   | `anthropic/claude-sonnet-4`    |
+| `OPENROUTER_MODEL_OPUS`   | OpenRouter model ID the `opus` tier maps to.                     | `anthropic/claude-opus-4`      |
 
 The `INFERENCE_MODEL` env var and `-m/--model` flag still take a tier
 (`haiku`/`sonnet`/`opus`); for OpenRouter each tier is mapped to a model ID via
@@ -171,6 +175,39 @@ the table above. You can also pass a fully qualified OpenRouter model ID (e.g.
 export OPENROUTER_API_KEY=sk-or-...
 refactor-tasks scan
 ```
+
+### Spike protection & chunked reporting
+
+A scan can surface thousands of findings, each reported as a separate Sentry
+event. [Spike protection](https://docs.sentry.io/pricing/quotas/spike-protection/)
+guards a project against sudden bursts of ingest — but that's exactly what a
+large scan looks like, so with it **enabled**, Sentry rate-limits the burst and
+**silently drops most events**: you'll see only a fraction of the expected
+issues created.
+
+The `REFACTOR_TASKS_SENTRY_CHUNK_SIZE` env var controls this:
+
+- A positive value sends findings in throttled chunks of that size, flushing
+  after each, so a large scan stays under the spike-protection rate limit and
+  every finding lands. Start around `25` if you hit drops.
+- `0` sends every finding in one batch. Fast, but only safe when the project has
+  spike protection **disabled**.
+- Leaving it unset defaults to `0`, so the effective default is a single batch
+  unless you opt into chunking via the env var or the flag below.
+
+During `scan-and-report`, findings **stream** to Sentry as each convention
+finishes scanning — a chunk is sent as soon as enough accumulate (counting
+across conventions), so reporting overlaps with the rest of the scan rather than
+waiting for it to finish. The `report` command takes the same control as a
+`--chunk-size <n>` flag.
+
+Check or change spike protection for your project under **Settings → Projects →
+[your project] → Spike Protection** (URL:
+`https://<your-org>.sentry.io/settings/projects/<your-project>/spike-protection/`).
+
+When chunking (chunk size `> 0`), the pacing is tunable via env vars for
+projects that need a gentler cadence: `REFACTOR_TASKS_SENTRY_CHUNK_DELAY_MS`
+(default 1000) and `REFACTOR_TASKS_SENTRY_FLUSH_TIMEOUT_MS` (default 30000).
 
 ## Writing a convention
 

@@ -63,12 +63,14 @@ async function resolveRepoName(repoRoot: string): Promise<string> {
 
 /**
  * Read repo-level scan settings from the environment (`INFERENCE_MODEL`,
- * `SCAN_CONCURRENCY`). Unset values fall back to the schema defaults.
+ * `SCAN_CONCURRENCY`, `REFACTOR_TASKS_SENTRY_CHUNK_SIZE`). Unset values fall back
+ * to the schema defaults.
  */
 function loadScanSettings(): ScanSettings {
   return ScanSettingsSchema.parse({
     default_model: process.env.INFERENCE_MODEL,
     scan_concurrency: process.env.SCAN_CONCURRENCY,
+    chunk_size: process.env.REFACTOR_TASKS_SENTRY_CHUNK_SIZE,
   });
 }
 
