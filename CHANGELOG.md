@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0
+
+### New Features ✨
+
+- (config) Configure via env vars and CLI, drop repo.yaml by @ryan953 in [#14](https://github.com/getsentry/sentry-refactor-tasks/pull/14)
+- (inference) Add OpenRouter API backend selectable via env by @ryan953 in [#13](https://github.com/getsentry/sentry-refactor-tasks/pull/13)
+
 ## 0.0.5
 
 ### Bug Fixes 🐛
