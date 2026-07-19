@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+### Bug Fixes 🐛
+
+- (reporter) Deliver all findings and fail loud when data doesn't reach Sentry by @ryan953 in [#15](https://github.com/getsentry/sentry-refactor-tasks/pull/15)
+
 ## 0.1.0
 
 ### New Features ✨
