@@ -148,19 +148,29 @@ function reportFinding(finding: ScanFinding): void {
   verbose(`Reported: [${finding.pattern_name}] ${finding.file}:${finding.line_start}`);
 }
 
+/**
+ * Findings per Sentry batch when neither an explicit value nor the
+ * `REFACTOR_TASKS_SENTRY_CHUNK_SIZE` env var is set. Paced chunks (this many
+ * findings, flushed with a delay between each) keep sends under the project's
+ * base rate limit so every finding is delivered.
+ */
+const DEFAULT_CHUNK_SIZE = 100;
+
 export interface ReportOptions {
   /**
-   * Findings per Sentry batch. `0` (the default) sends every finding in a single
-   * batch — only safe when the project has spike protection disabled, otherwise
-   * Sentry rate-limits the burst and silently drops most events. A positive
-   * value sends throttled chunks of that size instead. Falls back to the
-   * `REFACTOR_TASKS_SENTRY_CHUNK_SIZE` env var, then `0`.
+   * Findings per Sentry batch. A positive value sends paced chunks of that size,
+   * flushing after each, to stay under the per-project rate limit. `0` sends
+   * everything in a single unpaced batch — only viable when the volume fits under
+   * the rate limit; it fails loud rather than dropping silently if it doesn't.
+   * When unset, falls back to the `REFACTOR_TASKS_SENTRY_CHUNK_SIZE` env var,
+   * then {@link DEFAULT_CHUNK_SIZE}.
    */
   chunkSize?: number;
 }
 
 function resolveChunkSize(explicit?: number): number {
-  const requested = explicit ?? envIntOptional("REFACTOR_TASKS_SENTRY_CHUNK_SIZE") ?? 0;
+  const requested =
+    explicit ?? envIntOptional("REFACTOR_TASKS_SENTRY_CHUNK_SIZE") ?? DEFAULT_CHUNK_SIZE;
   return Number.isFinite(requested) && requested > 0 ? Math.floor(requested) : 0;
 }
 
