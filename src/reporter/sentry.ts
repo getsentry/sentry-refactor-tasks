@@ -156,8 +156,14 @@ export class FindingReporter {
       }
       this.sent += this.buffer.length;
       this.buffer = [];
+      const drained = await Sentry.flush(FLUSH_TIMEOUT_MS);
+      if (!drained) {
+        throw new Error(
+          `Sentry flush timed out after ${FLUSH_TIMEOUT_MS}ms; ${this.sent} findings were enqueued but not confirmed delivered. ` +
+            `Raise REFACTOR_TASKS_SENTRY_FLUSH_TIMEOUT_MS, or set REFACTOR_TASKS_SENTRY_CHUNK_SIZE to a positive value to send in paced chunks, then re-run.`,
+        );
+      }
       log(`Reported ${this.sent} findings to Sentry (single batch)`);
-      await Sentry.flush(FLUSH_TIMEOUT_MS);
       return;
     }
 
@@ -166,9 +172,9 @@ export class FindingReporter {
     }
 
     if (this.flushTimeouts > 0) {
-      log(
-        `Warning: ${this.flushTimeouts} chunk flush(es) timed out — some findings may have been dropped. ` +
-          `Increase REFACTOR_TASKS_SENTRY_CHUNK_DELAY_MS or the project's rate limit and re-run.`,
+      throw new Error(
+        `${this.flushTimeouts} chunk flush(es) timed out — some findings may not have been delivered. ` +
+          `Increase REFACTOR_TASKS_SENTRY_CHUNK_DELAY_MS or REFACTOR_TASKS_SENTRY_FLUSH_TIMEOUT_MS, or raise the project's rate limit, then re-run.`,
       );
     }
   }
