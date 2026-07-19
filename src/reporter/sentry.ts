@@ -4,15 +4,18 @@ import type { ScanFinding } from "../scanner/result.ts";
 import { log, verbose } from "../utils/logger.ts";
 
 /**
- * Sentry rate-limits (and spike-protects) bursts of ingest. Firing every
- * finding in a tight loop and flushing once can trip those limits: the
- * transport honors the 429 `X-Sentry-Rate-Limits` headers and silently drops
- * the remainder, so most findings never become issues.
+ * Sentry rate-limits bursts of ingest independently of spike protection: even
+ * with spike protection off, a project's base rate limit still applies. Firing
+ * every finding in a tight loop and flushing once trips it — the transport
+ * honors the 429 `X-Sentry-Rate-Limits` header and drops the remainder, so many
+ * findings never become issues. Crucially a 429 is a *completed* request, so the
+ * flush still succeeds; the drop is only visible via transport outcomes.
  *
  * The `chunkSize` control tunes this: `0` (the default) sends everything in a
- * single batch — fine when the project has spike protection disabled — while a
- * positive value sends paced chunks of that size, flushing after each, to stay
- * under the per-project rate limit. The pacing/flush knobs below are further
+ * single batch (fast, but only viable when the volume fits under the rate
+ * limit), while a positive value sends paced chunks of that size, flushing after
+ * each, to stay under it. Either way, dropped events are detected and the run
+ * fails loud rather than reporting success. The pacing/flush knobs below are
  * tunable via env vars for projects with different limits.
  */
 function envInt(name: string, fallback: number): number {
@@ -32,11 +35,58 @@ function envIntOptional(name: string): number | undefined {
 const CHUNK_DELAY_MS = envInt("REFACTOR_TASKS_SENTRY_CHUNK_DELAY_MS", 1000);
 const FLUSH_TIMEOUT_MS = envInt("REFACTOR_TASKS_SENTRY_FLUSH_TIMEOUT_MS", 30_000);
 
-function initSentry(dsn: string): void {
+/**
+ * The Sentry transport holds in-flight events in a promise buffer that defaults
+ * to 64 slots. `captureMessage` is fire-and-forget, so once the buffer fills the
+ * transport rejects the overflow and it is silently dropped — no 429, unrelated
+ * to spike protection. We raise the buffer to this floor; the reporter sizes the
+ * actual buffer to at least a full chunk (see {@link FindingReporter}) so a send
+ * never enqueues past it between flushes, and every finding is delivered.
+ */
+const BUFFER_SIZE = envInt("REFACTOR_TASKS_SENTRY_BUFFER_SIZE", 1000);
+
+/**
+ * Events the transport rejected, tallied by reason (e.g. `ratelimit_backoff`,
+ * `network_error`). A rate-limit drop is a *completed* 429 request, so the send
+ * promise resolves and `Sentry.flush()` returns `true` — flush success can't
+ * see these. We intercept the transport's `recordDroppedEvent` instead so the
+ * run can fail loud when data didn't actually reach Sentry.
+ */
+const droppedEvents = new Map<string, number>();
+
+function recordDrop(reason: string, count: number): void {
+  droppedEvents.set(reason, (droppedEvents.get(reason) ?? 0) + count);
+}
+
+function totalDropped(): number {
+  let total = 0;
+  for (const count of droppedEvents.values()) total += count;
+  return total;
+}
+
+function droppedSummary(): string {
+  return [...droppedEvents.entries()].map(([reason, count]) => `${reason}=${count}`).join(", ");
+}
+
+function initSentry(dsn: string, bufferSize: number): void {
+  droppedEvents.clear();
   Sentry.init({
     dsn,
     defaultIntegrations: false,
     tracesSampleRate: 0,
+    transportOptions: { bufferSize },
+    // Wrap the transport so we see every drop it records. The client passes its
+    // own `recordDroppedEvent` into the factory; we tee it into our tally. This
+    // is done at construction (not a post-init monkeypatch) because the client
+    // binds the callback into the transport once, at init.
+    transport: (options) =>
+      Sentry.makeNodeTransport({
+        ...options,
+        recordDroppedEvent: (reason, category, count = 1) => {
+          recordDrop(reason, count);
+          options.recordDroppedEvent(reason, category, count);
+        },
+      }),
   });
 }
 
@@ -99,19 +149,29 @@ function reportFinding(finding: ScanFinding): void {
   verbose(`Reported: [${finding.pattern_name}] ${finding.file}:${finding.line_start}`);
 }
 
+/**
+ * Findings per Sentry batch when neither an explicit value nor the
+ * `REFACTOR_TASKS_SENTRY_CHUNK_SIZE` env var is set. Paced chunks (this many
+ * findings, flushed with a delay between each) keep sends under the project's
+ * base rate limit so every finding is delivered.
+ */
+const DEFAULT_CHUNK_SIZE = 100;
+
 export interface ReportOptions {
   /**
-   * Findings per Sentry batch. `0` (the default) sends every finding in a single
-   * batch — only safe when the project has spike protection disabled, otherwise
-   * Sentry rate-limits the burst and silently drops most events. A positive
-   * value sends throttled chunks of that size instead. Falls back to the
-   * `REFACTOR_TASKS_SENTRY_CHUNK_SIZE` env var, then `0`.
+   * Findings per Sentry batch. A positive value sends paced chunks of that size,
+   * flushing after each, to stay under the per-project rate limit. `0` sends
+   * everything in a single unpaced batch — only viable when the volume fits under
+   * the rate limit; it fails loud rather than dropping silently if it doesn't.
+   * When unset, falls back to the `REFACTOR_TASKS_SENTRY_CHUNK_SIZE` env var,
+   * then {@link DEFAULT_CHUNK_SIZE}.
    */
   chunkSize?: number;
 }
 
 function resolveChunkSize(explicit?: number): number {
-  const requested = explicit ?? envIntOptional("REFACTOR_TASKS_SENTRY_CHUNK_SIZE") ?? 0;
+  const requested =
+    explicit ?? envIntOptional("REFACTOR_TASKS_SENTRY_CHUNK_SIZE") ?? DEFAULT_CHUNK_SIZE;
   return Number.isFinite(requested) && requested > 0 ? Math.floor(requested) : 0;
 }
 
@@ -128,14 +188,18 @@ function resolveChunkSize(explicit?: number): number {
  */
 export class FindingReporter {
   private readonly chunkSize: number;
+  private readonly bufferSize: number;
   private buffer: ScanFinding[] = [];
   private sent = 0;
   private flushTimeouts = 0;
   private sentAnyChunk = false;
 
   constructor(dsn: string, options: ReportOptions = {}) {
-    initSentry(dsn);
     this.chunkSize = resolveChunkSize(options.chunkSize);
+    // `sendChunk` enqueues a whole chunk before flushing, so the transport
+    // buffer must hold at least one chunk or the overflow is silently dropped.
+    this.bufferSize = Math.max(BUFFER_SIZE, this.chunkSize);
+    initSentry(dsn, this.bufferSize);
   }
 
   /** Buffer findings, sending any now-complete chunks (when `chunkSize > 0`). */
@@ -151,13 +215,27 @@ export class FindingReporter {
   /** Send whatever is buffered and do a final flush. */
   async finish(): Promise<void> {
     if (this.chunkSize <= 0) {
-      for (const finding of this.buffer) {
-        reportFinding(finding);
+      // Send in windows no larger than the transport buffer, flushing after
+      // each, so we never enqueue past the buffer's capacity — the overflow
+      // would be silently dropped. With spike protection off there's no need to
+      // pace between windows, so this stays a fast single logical batch.
+      const remainder = this.buffer.splice(0);
+      for (let i = 0; i < remainder.length; i += this.bufferSize) {
+        const window = remainder.slice(i, i + this.bufferSize);
+        for (const finding of window) {
+          reportFinding(finding);
+        }
+        this.sent += window.length;
+        const drained = await Sentry.flush(FLUSH_TIMEOUT_MS);
+        if (!drained) {
+          throw new Error(
+            `Sentry flush timed out after ${FLUSH_TIMEOUT_MS}ms; ${this.sent} findings were enqueued but not confirmed delivered. ` +
+              `Raise REFACTOR_TASKS_SENTRY_FLUSH_TIMEOUT_MS, or set REFACTOR_TASKS_SENTRY_CHUNK_SIZE to a positive value to send in paced chunks, then re-run.`,
+          );
+        }
       }
-      this.sent += this.buffer.length;
-      this.buffer = [];
+      this.assertNoDrops();
       log(`Reported ${this.sent} findings to Sentry (single batch)`);
-      await Sentry.flush(FLUSH_TIMEOUT_MS);
       return;
     }
 
@@ -166,9 +244,29 @@ export class FindingReporter {
     }
 
     if (this.flushTimeouts > 0) {
-      log(
-        `Warning: ${this.flushTimeouts} chunk flush(es) timed out — some findings may have been dropped. ` +
-          `Increase REFACTOR_TASKS_SENTRY_CHUNK_DELAY_MS or the project's rate limit and re-run.`,
+      throw new Error(
+        `${this.flushTimeouts} chunk flush(es) timed out — some findings may not have been delivered. ` +
+          `Increase REFACTOR_TASKS_SENTRY_CHUNK_DELAY_MS or REFACTOR_TASKS_SENTRY_FLUSH_TIMEOUT_MS, or raise the project's rate limit, then re-run.`,
+      );
+    }
+
+    this.assertNoDrops();
+  }
+
+  /**
+   * Fail loud if the transport rejected any events. A flush can succeed while
+   * events were still dropped — a rate-limit 429 is a completed request, so the
+   * promise resolves and the drop is only visible via the transport outcomes we
+   * teed into {@link droppedEvents}. Without this, a throttled run reports
+   * "success" while data never reached Sentry.
+   */
+  private assertNoDrops(): void {
+    const dropped = totalDropped();
+    if (dropped > 0) {
+      throw new Error(
+        `Sentry dropped ${dropped} of ${this.sent} events (${droppedSummary()}). ` +
+          `Set REFACTOR_TASKS_SENTRY_CHUNK_SIZE to a positive value to pace sends under the rate limit, ` +
+          `and/or raise REFACTOR_TASKS_SENTRY_CHUNK_DELAY_MS, then re-run.`,
       );
     }
   }

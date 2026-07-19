@@ -31,10 +31,9 @@ export const ScanSettingsSchema = z.object({
   default_model: z.enum(["haiku", "sonnet", "opus"]).default("haiku"),
   scan_concurrency: z.coerce.number().int().positive().default(4),
   // Findings per Sentry batch. Left unset, it falls back to the
-  // REFACTOR_TASKS_SENTRY_CHUNK_SIZE env var, then 0. `0` sends everything at
-  // once — only safe when the project has spike protection disabled, otherwise
-  // the burst is rate-limited and most findings never become issues. A positive
-  // value sends throttled chunks of that size instead.
+  // REFACTOR_TASKS_SENTRY_CHUNK_SIZE env var, then a paced default. A positive
+  // value sends throttled chunks of that size to stay under the project's rate
+  // limit; `0` sends everything in a single unpaced batch.
   chunk_size: z.coerce.number().int().min(0).optional(),
 });
 
