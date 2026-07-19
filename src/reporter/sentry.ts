@@ -39,8 +39,9 @@ const FLUSH_TIMEOUT_MS = envInt("REFACTOR_TASKS_SENTRY_FLUSH_TIMEOUT_MS", 30_000
  * The Sentry transport holds in-flight events in a promise buffer that defaults
  * to 64 slots. `captureMessage` is fire-and-forget, so once the buffer fills the
  * transport rejects the overflow and it is silently dropped — no 429, unrelated
- * to spike protection. We raise the buffer and never enqueue more than this many
- * events between flushes, so every finding is delivered.
+ * to spike protection. We raise the buffer to this floor; the reporter sizes the
+ * actual buffer to at least a full chunk (see {@link FindingReporter}) so a send
+ * never enqueues past it between flushes, and every finding is delivered.
  */
 const BUFFER_SIZE = envInt("REFACTOR_TASKS_SENTRY_BUFFER_SIZE", 1000);
 
@@ -67,13 +68,13 @@ function droppedSummary(): string {
   return [...droppedEvents.entries()].map(([reason, count]) => `${reason}=${count}`).join(", ");
 }
 
-function initSentry(dsn: string): void {
+function initSentry(dsn: string, bufferSize: number): void {
   droppedEvents.clear();
   Sentry.init({
     dsn,
     defaultIntegrations: false,
     tracesSampleRate: 0,
-    transportOptions: { bufferSize: BUFFER_SIZE },
+    transportOptions: { bufferSize },
     // Wrap the transport so we see every drop it records. The client passes its
     // own `recordDroppedEvent` into the factory; we tee it into our tally. This
     // is done at construction (not a post-init monkeypatch) because the client
@@ -187,14 +188,18 @@ function resolveChunkSize(explicit?: number): number {
  */
 export class FindingReporter {
   private readonly chunkSize: number;
+  private readonly bufferSize: number;
   private buffer: ScanFinding[] = [];
   private sent = 0;
   private flushTimeouts = 0;
   private sentAnyChunk = false;
 
   constructor(dsn: string, options: ReportOptions = {}) {
-    initSentry(dsn);
     this.chunkSize = resolveChunkSize(options.chunkSize);
+    // `sendChunk` enqueues a whole chunk before flushing, so the transport
+    // buffer must hold at least one chunk or the overflow is silently dropped.
+    this.bufferSize = Math.max(BUFFER_SIZE, this.chunkSize);
+    initSentry(dsn, this.bufferSize);
   }
 
   /** Buffer findings, sending any now-complete chunks (when `chunkSize > 0`). */
@@ -215,8 +220,8 @@ export class FindingReporter {
       // would be silently dropped. With spike protection off there's no need to
       // pace between windows, so this stays a fast single logical batch.
       const remainder = this.buffer.splice(0);
-      for (let i = 0; i < remainder.length; i += BUFFER_SIZE) {
-        const window = remainder.slice(i, i + BUFFER_SIZE);
+      for (let i = 0; i < remainder.length; i += this.bufferSize) {
+        const window = remainder.slice(i, i + this.bufferSize);
         for (const finding of window) {
           reportFinding(finding);
         }
