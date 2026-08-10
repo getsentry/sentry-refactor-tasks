@@ -16,6 +16,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Checkout is the only thing needing the GITHUB_TOKEN here; upload-artifact
+# authenticates with the runner's own token, not this one.
+permissions:
+  contents: read
+
 jobs:
   build-pack:
     runs-on: ubuntu-latest
