@@ -5,6 +5,7 @@ import { cacheDir } from "../utils/cache-dir.ts";
 import { execShell } from "../utils/exec.ts";
 import { findFiles } from "../utils/glob.ts";
 import { verbose } from "../utils/logger.ts";
+import { prepareCommand, describeCommand } from "./command-template.ts";
 
 function cachedCommandPath(slug: string, patternName: string): string {
   return join(cacheDir(), slug, `${patternName}.sh`);
@@ -20,13 +21,14 @@ async function isCacheValid(slug: string, patternName: string, yamlPath: string)
   }
 }
 
-async function runPrefilterCommand(command: string, repoPath: string): Promise<string[]> {
-  const expanded = command.replace(/\{repo_path\}/g, repoPath);
-  verbose(`Running prefilter: ${expanded}`);
+async function runPrefilterCommand(template: string, repoPath: string): Promise<string[]> {
+  const prepared = prepareCommand(template, repoPath);
+  verbose(`Running prefilter: ${describeCommand(prepared)}`);
   try {
-    const { stdout } = await execShell(expanded, {
+    const { stdout } = await execShell(prepared.command, {
       timeout: 30_000,
       cwd: repoPath,
+      env: prepared.env,
     });
     return stdout
       .trim()

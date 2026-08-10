@@ -249,6 +249,12 @@ root being scanned) and `{convention_dir}` (the repo's
 `.sentry-refactor-tasks/conventions/` folder — use it to reference sidecar
 scripts/configs that live next to the YAML).
 
+Each token expands to an already-quoted shell variable reference, and the path
+itself reaches the command through the environment — so a checkout path with
+spaces or shell metacharacters stays one argument instead of being re-parsed.
+Write the tokens bare (`{repo_path}/static/app/`, as above); don't wrap them in
+quotes of your own (`'{repo_path}'` would suppress the expansion).
+
 ### Detection output (stdout shape)
 
 The two paths read different things from the command's **stdout**. In both
