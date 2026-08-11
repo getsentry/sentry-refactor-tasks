@@ -130,6 +130,8 @@ async function scanPattern(
   const model = options.model ?? config.default_model;
   const gitSha = await resolveGitSha(config.path);
   const usesDetectCommand = Boolean(pattern.detect_command);
+  const startTime = performance.now();
+  const elapsedSeconds = () => ((performance.now() - startTime) / 1000).toFixed(1);
 
   log(`Scanning for "${pattern.name}" in ${config.repo} @ ${gitSha.slice(0, 8)}...`);
 
@@ -152,7 +154,7 @@ async function scanPattern(
     });
     const hydrated = corrected.map((f) => hydrateFinding(f, pattern, config.repo, gitSha));
     const deduped = deduplicateFindings(hydrated);
-    log(`  Found ${deduped.length} violations`);
+    log(`  Found ${deduped.length} violations (${elapsedSeconds()}s)`);
     return deduped;
   }
 
@@ -165,7 +167,7 @@ async function scanPattern(
   const rawFindings = await scanWithDetectCommand(pattern, config);
   const hydrated = rawFindings.map((f) => hydrateFinding(f, pattern, config.repo, gitSha));
   const deduped = deduplicateFindings(hydrated);
-  log(`  Found ${deduped.length} violations`);
+  log(`  Found ${deduped.length} violations (${elapsedSeconds()}s)`);
   return deduped;
 }
 
@@ -191,6 +193,7 @@ export async function scanRepo(
     return [];
   }
 
+  const totalStart = performance.now();
   const allFindings: ScanFinding[] = [];
   for (const pattern of toScan) {
     const findings = await scanPattern(pattern, config, options);
@@ -198,6 +201,10 @@ export async function scanRepo(
     if (findings.length > 0 && options.onFindings) {
       await options.onFindings(findings);
     }
+  }
+
+  if (toScan.length > 1) {
+    log(`Scanned ${toScan.length} patterns in ${((performance.now() - totalStart) / 1000).toFixed(1)}s`);
   }
 
   return allFindings;
