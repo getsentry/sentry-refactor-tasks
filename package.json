@@ -1,6 +1,6 @@
 {
   "name": "@sentry/refactor-tasks",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": false,
   "description": "LLM-powered code-convention scanner that reports refactor tasks to Sentry for Seer to fix",
   "keywords": [
