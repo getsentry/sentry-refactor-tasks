@@ -22,7 +22,7 @@ export async function scanAndReportCommand(options: {
   // with scanning instead of waiting for the whole scan to finish.
   const reporter = new FindingReporter(dsn, { chunkSize: config.chunk_size });
 
-  const findings = await scanRepo(patterns, config, {
+  const { findings, failures } = await scanRepo(patterns, config, {
     model: options.model,
     patternFilter: options.patternFilter,
     onFindings: (found) => reporter.add(found),
@@ -35,4 +35,13 @@ export async function scanAndReportCommand(options: {
   }
 
   printFindings(findings);
+
+  // Report every finding scanning did produce before failing: a broken
+  // detector for one pattern must not cost the findings every other pattern
+  // found, but the run still needs to fail loud so CI doesn't report success.
+  if (failures.length > 0) {
+    throw new Error(
+      `${failures.length} convention(s) failed to scan: ${failures.map((f) => f.pattern).join(", ")}. See the detect command diagnostics above.`,
+    );
+  }
 }
