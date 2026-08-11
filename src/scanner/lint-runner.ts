@@ -10,6 +10,15 @@ import type { RawFinding } from "./result.ts";
 // this budget is almost certainly the kill, not the command's own choice.
 const DETECT_COMMAND_TIMEOUT_MS = 300_000;
 
+// Keep the tail, not the head: die()-style diagnostics put the actual
+// reason last, after any setup/install noise.
+const STDERR_TAIL_LIMIT = 4000;
+
+function truncateStderr(stderr: string): string {
+  if (stderr.length <= STDERR_TAIL_LIMIT) return stderr;
+  return `[...truncated, showing last ${STDERR_TAIL_LIMIT} characters...]\n${stderr.slice(-STDERR_TAIL_LIMIT)}`;
+}
+
 export class DetectCommandError extends Error {}
 
 function describeExit(result: PermissiveExecResult): string {
@@ -36,7 +45,7 @@ function fail(
   reason: string,
   result: PermissiveExecResult,
 ): never {
-  const stderr = result.stderr.trim();
+  const stderr = truncateStderr(result.stderr.trim());
   const message = [
     `Detect command for "${pattern.name}" failed: ${reason}`,
     `command: ${describeCommand(prepared)}`,
