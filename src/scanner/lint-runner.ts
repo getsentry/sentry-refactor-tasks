@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { relative } from "node:path";
-import { conventionsDir } from "../config/paths.ts";
 import type { ResolvedRepoConfig, Pattern } from "../config/schemas.ts";
 import { execShellPermissive } from "../utils/exec.ts";
 import { verbose, log } from "../utils/logger.ts";
+import { prepareCommand, describeCommand } from "./command-template.ts";
 import type { RawFinding } from "./result.ts";
 
 interface EslintMessage {
@@ -31,15 +31,13 @@ export async function runDetectCommand(
   pattern: Pattern,
   config: ResolvedRepoConfig,
 ): Promise<RawFinding[]> {
-  const conventionDir = conventionsDir(config.path);
-  const command = pattern
-    .detect_command!.replace(/\{repo_path\}/g, config.path)
-    .replace(/\{convention_dir\}/g, conventionDir);
-  verbose(`Running detect command: ${command}`);
+  const prepared = prepareCommand(pattern.detect_command!, config.path);
+  verbose(`Running detect command: ${describeCommand(prepared)}`);
 
-  const { stdout } = await execShellPermissive(command, {
+  const { stdout } = await execShellPermissive(prepared.command, {
     timeout: 300_000,
     cwd: config.path,
+    env: prepared.env,
   });
 
   if (!stdout.trim()) {

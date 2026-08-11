@@ -6,13 +6,14 @@ import { cacheDir } from "../utils/cache-dir.ts";
 import { runInference } from "../inference/index.ts";
 import { log, verbose } from "../utils/logger.ts";
 
-function buildGenerationPrompt(pattern: Pattern, config: ResolvedRepoConfig): string {
+function buildGenerationPrompt(pattern: Pattern): string {
   let prompt = `Given this code pattern description, generate a single shell command (using grep, ripgrep, find, or similar) that finds files likely containing this pattern.
 
 The command should:
 - Be fast and have high recall (false positives are OK, the LLM will filter later)
 - Output one file path per line
-- Search within: ${config.path}`;
+- Search within the repo root, written as the literal token {repo_path} — for example: {repo_path}/static/app/
+- Write {repo_path} bare and unquoted; do NOT wrap it in quotes and do NOT substitute a real path for it`;
 
   if (pattern.include?.length) {
     prompt += `\n- Only search in files matching: ${pattern.include.join(", ")}`;
@@ -35,7 +36,7 @@ async function generatePrefilterCommand(
   pattern: Pattern,
   config: ResolvedRepoConfig,
 ): Promise<string> {
-  const prompt = buildGenerationPrompt(pattern, config);
+  const prompt = buildGenerationPrompt(pattern);
 
   verbose(`Generating prefilter command for "${pattern.name}"`);
 
