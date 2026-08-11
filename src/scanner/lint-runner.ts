@@ -1,10 +1,40 @@
-import { readFile } from "node:fs/promises";
+import { appendFile, readFile } from "node:fs/promises";
 import { relative } from "node:path";
 import type { ResolvedRepoConfig, Pattern } from "../config/schemas.ts";
 import { execShellPermissive } from "../utils/exec.ts";
 import { verbose, log } from "../utils/logger.ts";
 import { prepareCommand, describeCommand } from "./command-template.ts";
 import type { RawFinding } from "./result.ts";
+
+// Keep the tail, not the head: die()-style diagnostics put the actual
+// reason last, after any setup/install noise.
+const STDERR_TAIL_LIMIT = 4000;
+
+function truncateStderr(stderr: string): string {
+  const trimmed = stderr.trim();
+  if (trimmed.length <= STDERR_TAIL_LIMIT) return trimmed;
+  return `[...truncated, showing last ${STDERR_TAIL_LIMIT} characters...]\n${trimmed.slice(-STDERR_TAIL_LIMIT)}`;
+}
+
+// Safety net independent of any individual detect script remembering to
+// mirror its own diagnostics to $GITHUB_STEP_SUMMARY.
+async function reportDetectFailure(pattern: Pattern, stderr: string): Promise<void> {
+  if (!stderr.trim()) return;
+
+  const diagnostic = truncateStderr(stderr);
+  log(`  Detect command stderr:\n${diagnostic}`);
+
+  const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+  if (!summaryPath) return;
+  try {
+    await appendFile(
+      summaryPath,
+      `\n\n### Detect command failed: ${pattern.name}\n\n\`\`\`\n${diagnostic}\n\`\`\`\n`,
+    );
+  } catch (err) {
+    verbose(`  Failed to write to GITHUB_STEP_SUMMARY: ${err}`);
+  }
+}
 
 interface EslintMessage {
   ruleId: string;
@@ -34,7 +64,7 @@ export async function runDetectCommand(
   const prepared = prepareCommand(pattern.detect_command!, config.path);
   verbose(`Running detect command: ${describeCommand(prepared)}`);
 
-  const { stdout } = await execShellPermissive(prepared.command, {
+  const { stdout, stderr } = await execShellPermissive(prepared.command, {
     timeout: 300_000,
     cwd: config.path,
     env: prepared.env,
@@ -42,6 +72,7 @@ export async function runDetectCommand(
 
   if (!stdout.trim()) {
     log(`  Detect command produced no output`);
+    await reportDetectFailure(pattern, stderr);
     return [];
   }
 
@@ -51,6 +82,7 @@ export async function runDetectCommand(
   } catch {
     log(`  Failed to parse detect command output as JSON`);
     verbose(`  Output head: ${stdout.slice(0, 200)}`);
+    await reportDetectFailure(pattern, stderr);
     return [];
   }
 
