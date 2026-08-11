@@ -171,6 +171,19 @@ async function scanPattern(
   return deduped;
 }
 
+export interface PatternFailure {
+  pattern: string;
+  message: string;
+}
+
+export interface ScanRepoResult {
+  findings: ScanFinding[];
+  // One pattern's detect command blowing up must not cost the findings every
+  // other pattern already found, or hide that it happened — so a failure is
+  // recorded here and scanning continues, rather than throwing mid-loop.
+  failures: PatternFailure[];
+}
+
 export async function scanRepo(
   patterns: Pattern[],
   config: ResolvedRepoConfig,
@@ -183,20 +196,29 @@ export async function scanRepo(
     // waiting for the whole scan. Awaited, so it also applies backpressure.
     onFindings?: (findings: ScanFinding[]) => Promise<void> | void;
   },
-): Promise<ScanFinding[]> {
+): Promise<ScanRepoResult> {
   const toScan = options.patternFilter
     ? patterns.filter((p) => p.name === options.patternFilter)
     : patterns;
 
   if (toScan.length === 0) {
     log("No matching patterns found.");
-    return [];
+    return { findings: [], failures: [] };
   }
 
   const totalStart = performance.now();
   const allFindings: ScanFinding[] = [];
+  const failures: PatternFailure[] = [];
   for (const pattern of toScan) {
-    const findings = await scanPattern(pattern, config, options);
+    let findings: ScanFinding[];
+    try {
+      findings = await scanPattern(pattern, config, options);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      log(`  Skipping "${pattern.name}" after failure: ${message}`);
+      failures.push({ pattern: pattern.name, message });
+      continue;
+    }
     allFindings.push(...findings);
     if (findings.length > 0 && options.onFindings) {
       await options.onFindings(findings);
@@ -204,8 +226,16 @@ export async function scanRepo(
   }
 
   if (toScan.length > 1) {
-    log(`Scanned ${toScan.length} patterns in ${((performance.now() - totalStart) / 1000).toFixed(1)}s`);
+    log(
+      `Scanned ${toScan.length} patterns in ${((performance.now() - totalStart) / 1000).toFixed(1)}s`,
+    );
   }
 
-  return allFindings;
+  if (failures.length > 0) {
+    log(
+      `${failures.length}/${toScan.length} pattern(s) failed to scan: ${failures.map((f) => f.pattern).join(", ")}`,
+    );
+  }
+
+  return { findings: allFindings, failures };
 }

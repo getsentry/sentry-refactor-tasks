@@ -8,6 +8,13 @@ export interface ExecResult {
   stderr: string;
 }
 
+export interface PermissiveExecResult extends ExecResult {
+  /** Exit code; a string like "ENOENT" if the process never spawned; null if killed by a signal. */
+  code: number | string | null;
+  /** Signal that killed the process, if any (e.g. "SIGTERM" on the exec timeout). */
+  signal: NodeJS.Signals | null;
+}
+
 export interface ExecOptions {
   timeout?: number;
   cwd?: string;
@@ -33,16 +40,22 @@ export async function execShell(command: string, options?: ExecOptions): Promise
   return exec("/bin/sh", ["-c", command], options);
 }
 
+// Unlike exec(), never throws: the caller needs stdout/stderr/exit status for a
+// process that may legitimately fail (a detect command reporting no findings
+// looks the same as one that crashed, unless the caller inspects all three).
 export async function execShellPermissive(
   command: string,
   options?: ExecOptions,
-): Promise<ExecResult> {
+): Promise<PermissiveExecResult> {
   try {
-    return await exec("/bin/sh", ["-c", command], options);
+    const { stdout, stderr } = await exec("/bin/sh", ["-c", command], options);
+    return { stdout, stderr, code: 0, signal: null };
   } catch (err: any) {
     return {
       stdout: err.stdout ?? "",
       stderr: err.stderr ?? "",
+      code: err.code ?? null,
+      signal: err.signal ?? null,
     };
   }
 }

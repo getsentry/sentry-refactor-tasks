@@ -10,7 +10,7 @@ export async function scanCommand(
   const config = await resolveRepo(options.cwd ?? process.cwd());
   const patterns = await loadAllPatterns(config.path);
 
-  const findings = await scanRepo(patterns, config, {
+  const { findings, failures } = await scanRepo(patterns, config, {
     model: options.model,
     dryRun: options.dryRun,
     patternFilter: patternName,
@@ -20,5 +20,11 @@ export async function scanCommand(
 
   if (!options.dryRun) {
     console.log(JSON.stringify(findings, null, 2));
+  }
+
+  if (failures.length > 0) {
+    throw new Error(
+      `${failures.length} convention(s) failed to scan: ${failures.map((f) => f.pattern).join(", ")}. See the detect command diagnostics above.`,
+    );
   }
 }
