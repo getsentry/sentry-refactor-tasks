@@ -5,7 +5,6 @@ import { findingsJsonSchema, FindingsResponseSchema } from "../config/schemas.ts
 import type { FindingsResponse } from "../config/schemas.ts";
 import { runInference } from "../inference/index.ts";
 import { verbose } from "../utils/logger.ts";
-import { withRetry } from "../utils/retry.ts";
 
 export interface FileContent {
   absolutePath: string;
@@ -63,24 +62,19 @@ export async function analyzeWithClaude(
 
   verbose(`Analyzing ${files.length} files for pattern "${pattern.name}" with model "${model}"`);
 
-  // A single request timeout or a transient provider hiccup shouldn't cost the
-  // whole pattern (and, via scanRepo's fail-loud policy, the whole CI run) — retry
-  // a bounded number of times before letting the failure propagate.
-  return withRetry(
-    async () => {
-      const output = await runInference({
-        prompt,
-        model,
-        system: systemPrompt,
-        jsonSchema: {
-          name: "findings",
-          schema: findingsJsonSchema as Record<string, unknown>,
-        },
-        timeoutMs: 120_000,
-      });
-
-      return FindingsResponseSchema.parse(JSON.parse(output));
+  // 240s (up from the original 120s): a batch that was seen aborting at exactly
+  // the old ceiling in CI was likely just slow under load, not stuck — this
+  // gives it headroom without adding retry logic.
+  const output = await runInference({
+    prompt,
+    model,
+    system: systemPrompt,
+    jsonSchema: {
+      name: "findings",
+      schema: findingsJsonSchema as Record<string, unknown>,
     },
-    { label: `Pattern "${pattern.name}" inference batch`, attempts: 3, delayMs: 3000 },
-  );
+    timeoutMs: 240_000,
+  });
+
+  return FindingsResponseSchema.parse(JSON.parse(output));
 }
