@@ -79,7 +79,12 @@ export const openRouterProvider: InferenceProvider = {
         signal: AbortSignal.timeout(req.timeoutMs ?? 120_000),
       });
     } catch (err) {
-      if (err instanceof Error && err.name === "TimeoutError") {
+      // `AbortSignal.timeout()` aborts with a `DOMException`, which does not
+      // extend `Error` — checking `err instanceof Error` here would silently
+      // skip this branch and let the generic "operation was aborted" message
+      // through instead of the timeout duration.
+      const name = err && typeof err === "object" ? (err as { name?: unknown }).name : undefined;
+      if (name === "TimeoutError") {
         throw new Error(`OpenRouter request timed out after ${req.timeoutMs ?? 120_000}ms`);
       }
       throw err;
