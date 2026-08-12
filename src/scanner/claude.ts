@@ -62,6 +62,9 @@ export async function analyzeWithClaude(
 
   verbose(`Analyzing ${files.length} files for pattern "${pattern.name}" with model "${model}"`);
 
+  // 240s (up from the original 120s): a batch that was seen aborting at exactly
+  // the old ceiling in CI was likely just slow under load, not stuck — this
+  // gives it headroom without adding retry logic.
   const output = await runInference({
     prompt,
     model,
@@ -70,7 +73,7 @@ export async function analyzeWithClaude(
       name: "findings",
       schema: findingsJsonSchema as Record<string, unknown>,
     },
-    timeoutMs: 120_000,
+    timeoutMs: 240_000,
   });
 
   return FindingsResponseSchema.parse(JSON.parse(output));

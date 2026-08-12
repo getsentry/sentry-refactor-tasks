@@ -14,8 +14,10 @@ import { log, verbose } from "../utils/logger.ts";
  * The `chunkSize` control tunes this: `0` (the default) sends everything in a
  * single batch (fast, but only viable when the volume fits under the rate
  * limit), while a positive value sends paced chunks of that size, flushing after
- * each, to stay under it. Either way, dropped events are detected and the run
- * fails loud rather than reporting success. The pacing/flush knobs below are
+ * each, to stay under it. Either way, dropped events are detected; a transient
+ * drop (e.g. a one-off `network_error`) is retried a bounded number of times
+ * before the run fails loud, so a single blip out of thousands of events
+ * doesn't turn a healthy scan red. The pacing/flush/retry knobs below are
  * tunable via env vars for projects with different limits.
  */
 function envInt(name: string, fallback: number): number {
@@ -34,6 +36,17 @@ function envIntOptional(name: string): number | undefined {
 
 const CHUNK_DELAY_MS = envInt("REFACTOR_TASKS_SENTRY_CHUNK_DELAY_MS", 1000);
 const FLUSH_TIMEOUT_MS = envInt("REFACTOR_TASKS_SENTRY_FLUSH_TIMEOUT_MS", 30_000);
+
+/**
+ * Attempts per batch (chunk, or single-batch window) before a drop is treated
+ * as unrecoverable. A `network_error` drop is often a one-off blip — a DNS
+ * hiccup, a reset connection — rather than a symptom of being rate-limited, so
+ * it is worth resending before giving up. Resending re-captures every finding
+ * in the batch, including ones already delivered; duplicates land as repeat
+ * occurrences of the same Sentry issue (findings are fingerprinted by pattern,
+ * file, and line), not separate issues.
+ */
+const CHUNK_SEND_ATTEMPTS = envInt("REFACTOR_TASKS_SENTRY_SEND_ATTEMPTS", 3);
 
 /**
  * The Sentry transport holds in-flight events in a promise buffer that defaults
@@ -58,14 +71,26 @@ function recordDrop(reason: string, count: number): void {
   droppedEvents.set(reason, (droppedEvents.get(reason) ?? 0) + count);
 }
 
-function totalDropped(): number {
-  let total = 0;
-  for (const count of droppedEvents.values()) total += count;
-  return total;
+/** A point-in-time copy of {@link droppedEvents}, to diff against after a send attempt. */
+function snapshotDropped(): Map<string, number> {
+  return new Map(droppedEvents);
 }
 
-function droppedSummary(): string {
-  return [...droppedEvents.entries()].map(([reason, count]) => `${reason}=${count}`).join(", ");
+/**
+ * The drops recorded since `before` was snapshotted, as a total and a
+ * `reason=count` summary — i.e. what this specific send attempt caused,
+ * not the run's cumulative total.
+ */
+function droppedSince(before: Map<string, number>): { total: number; summary: string } {
+  const delta = new Map<string, number>();
+  for (const [reason, count] of droppedEvents) {
+    const prior = before.get(reason) ?? 0;
+    if (count > prior) delta.set(reason, count - prior);
+  }
+  let total = 0;
+  for (const count of delta.values()) total += count;
+  const summary = [...delta.entries()].map(([reason, count]) => `${reason}=${count}`).join(", ");
+  return { total, summary };
 }
 
 function initSentry(dsn: string, bufferSize: number): void {
@@ -193,6 +218,11 @@ export class FindingReporter {
   private sent = 0;
   private flushTimeouts = 0;
   private sentAnyChunk = false;
+  // Drops that survived every retry attempt for their batch — as opposed to
+  // droppedEvents, which is the transport's raw cumulative tally and doesn't
+  // distinguish "dropped, then successfully resent" from "dropped for good".
+  private unrecoveredDrops = 0;
+  private unrecoveredSummaries: string[] = [];
 
   constructor(dsn: string, options: ReportOptions = {}) {
     this.chunkSize = resolveChunkSize(options.chunkSize);
@@ -222,11 +252,8 @@ export class FindingReporter {
       const remainder = this.buffer.splice(0);
       for (let i = 0; i < remainder.length; i += this.bufferSize) {
         const window = remainder.slice(i, i + this.bufferSize);
-        for (const finding of window) {
-          reportFinding(finding);
-        }
+        const drained = await this.sendItems(window);
         this.sent += window.length;
-        const drained = await Sentry.flush(FLUSH_TIMEOUT_MS);
         if (!drained) {
           throw new Error(
             `Sentry flush timed out after ${FLUSH_TIMEOUT_MS}ms; ${this.sent} findings were enqueued but not confirmed delivered. ` +
@@ -254,21 +281,59 @@ export class FindingReporter {
   }
 
   /**
-   * Fail loud if the transport rejected any events. A flush can succeed while
-   * events were still dropped — a rate-limit 429 is a completed request, so the
-   * promise resolves and the drop is only visible via the transport outcomes we
-   * teed into {@link droppedEvents}. Without this, a throttled run reports
-   * "success" while data never reached Sentry.
+   * Fail loud if any batch still had dropped events after exhausting its
+   * retries. Note this checks {@link unrecoveredDrops}, not the transport's raw
+   * cumulative tally — a drop that a retry successfully resent is not a
+   * failure, so it must not fail the run just because the transport still
+   * remembers the earlier, since-recovered attempt.
    */
   private assertNoDrops(): void {
-    const dropped = totalDropped();
-    if (dropped > 0) {
+    if (this.unrecoveredDrops > 0) {
       throw new Error(
-        `Sentry dropped ${dropped} of ${this.sent} events (${droppedSummary()}). ` +
+        `Sentry dropped ${this.unrecoveredDrops} of ${this.sent} events after ${CHUNK_SEND_ATTEMPTS} attempt(s) each (${this.unrecoveredSummaries.join("; ")}). ` +
           `Set REFACTOR_TASKS_SENTRY_CHUNK_SIZE to a positive value to pace sends under the rate limit, ` +
           `and/or raise REFACTOR_TASKS_SENTRY_CHUNK_DELAY_MS, then re-run.`,
       );
     }
+  }
+
+  /**
+   * Send `items` to Sentry, retrying the whole batch up to
+   * {@link CHUNK_SEND_ATTEMPTS} times if the transport records new drops (e.g. a
+   * transient `network_error`) since the attempt started. Resending re-reports
+   * every finding in the batch, including any already delivered — see
+   * {@link CHUNK_SEND_ATTEMPTS}'s doc comment for why that's fine. Returns
+   * whether the final attempt's flush drained; callers decide how to treat an
+   * undrained flush. Drops that survive every attempt are folded into
+   * {@link unrecoveredDrops}/{@link unrecoveredSummaries} for {@link assertNoDrops}.
+   */
+  private async sendItems(items: ScanFinding[]): Promise<boolean> {
+    let drained = true;
+
+    for (let attempt = 1; attempt <= CHUNK_SEND_ATTEMPTS; attempt++) {
+      const before = snapshotDropped();
+      for (const finding of items) {
+        reportFinding(finding);
+      }
+      drained = await Sentry.flush(FLUSH_TIMEOUT_MS);
+      if (!drained) return false;
+
+      const { total, summary } = droppedSince(before);
+      if (total === 0) return true;
+
+      if (attempt < CHUNK_SEND_ATTEMPTS) {
+        log(
+          `  Sentry dropped ${total} event(s) (${summary}) reporting this batch; retrying (attempt ${attempt + 1}/${CHUNK_SEND_ATTEMPTS})`,
+        );
+        await sleep(CHUNK_DELAY_MS * attempt);
+        continue;
+      }
+
+      this.unrecoveredDrops += total;
+      this.unrecoveredSummaries.push(summary);
+    }
+
+    return drained;
   }
 
   private async sendChunk(chunk: ScanFinding[]): Promise<void> {
@@ -279,12 +344,8 @@ export class FindingReporter {
     }
     this.sentAnyChunk = true;
 
-    for (const finding of chunk) {
-      reportFinding(finding);
-    }
+    const drained = await this.sendItems(chunk);
     this.sent += chunk.length;
-
-    const drained = await Sentry.flush(FLUSH_TIMEOUT_MS);
     if (!drained) {
       this.flushTimeouts++;
       verbose(`Flush timed out after ${this.sent} findings`);
