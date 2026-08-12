@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.0
+
+### New Features ✨
+
+- (scanner) Log elapsed time for each pattern scan by @ryan953 in [#18](https://github.com/getsentry/sentry-refactor-tasks/pull/18)
+
+### Bug Fixes 🐛
+
+#### Scanner
+
+- Fail loudly when a detect command can't be trusted by @ryan953 in [#20](https://github.com/getsentry/sentry-refactor-tasks/pull/20)
+- Stop building pattern shell commands from the repo path by @ryan953 in [#17](https://github.com/getsentry/sentry-refactor-tasks/pull/17)
+
+#### Other
+
+- (ci) Restrict GITHUB_TOKEN permissions in the build workflow by @ryan953 in [#16](https://github.com/getsentry/sentry-refactor-tasks/pull/16)
+
 ## 0.1.1
 
 ### Bug Fixes 🐛
