@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+### Bug Fixes 🐛
+
+- (scanner,reporter) Longer inference timeout, retry Sentry reporting drops by @ryan953 in [#21](https://github.com/getsentry/sentry-refactor-tasks/pull/21)
+
 ## 0.2.0
 
 ### New Features ✨
