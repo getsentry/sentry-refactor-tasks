@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { ResolvedRepoConfig, Pattern } from "../config/schemas.ts";
 import { cacheDir } from "../utils/cache-dir.ts";
 import { execShell } from "../utils/exec.ts";
-import { findFiles } from "../utils/glob.ts";
+import { findFiles, filterExcluded } from "../utils/glob.ts";
 import { verbose } from "../utils/logger.ts";
 import { prepareCommand, describeCommand } from "./command-template.ts";
 
@@ -47,7 +47,8 @@ export async function getFilesToScan(
 ): Promise<string[]> {
   if (pattern.prefilter) {
     verbose(`Using inline prefilter for "${pattern.name}"`);
-    return runPrefilterCommand(pattern.prefilter, config.path);
+    const files = await runPrefilterCommand(pattern.prefilter, config.path);
+    return filterExcluded(files, config.path, pattern.exclude ?? []);
   }
 
   if (_yamlPath) {
@@ -57,7 +58,8 @@ export async function getFilesToScan(
       const cachePath = cachedCommandPath(slug, pattern.name);
       const command = (await readFile(cachePath, "utf-8")).trim();
       verbose(`Using cached prefilter for "${pattern.name}"`);
-      return runPrefilterCommand(command, config.path);
+      const files = await runPrefilterCommand(command, config.path);
+      return filterExcluded(files, config.path, pattern.exclude ?? []);
     }
   }
 
