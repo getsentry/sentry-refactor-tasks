@@ -15,18 +15,19 @@ export async function findFiles(
   });
 }
 
-/**
- * Filters a list of absolute file paths against a set of exclude glob patterns.
- * Paths are matched against patterns using their relative form from repoPath,
- * so patterns like "**\/*.spec.*" work the same way as in findFiles().
- */
+// Filters a list of absolute file paths against a set of exclude glob patterns.
+// Converts each path to a repo-relative form before matching, so patterns like
+// "**/*.spec.*" behave the same way as the ignore option in findFiles().
 export function filterExcluded(
   files: string[],
   repoPath: string,
   exclude: string[],
 ): string[] {
-  if (!exclude.length) return files;
-  return files.filter(
-    (file) => !exclude.some((pattern) => matchesGlob(relative(repoPath, file), pattern)),
-  );
+  if (exclude.length === 0) {
+    return files;
+  }
+  return files.filter((file) => {
+    const rel = relative(repoPath, file);
+    return !exclude.some((pattern) => matchesGlob(rel, pattern));
+  });
 }
