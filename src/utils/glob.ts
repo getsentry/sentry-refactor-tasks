@@ -1,5 +1,5 @@
-import fg from "fast-glob";
 import { matchesGlob, relative } from "node:path";
+import fg from "fast-glob";
 
 export async function findFiles(
   repoPath: string,
