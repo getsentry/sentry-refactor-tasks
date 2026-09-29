@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { ResolvedRepoConfig, Pattern } from "../config/schemas.ts";
 import { cacheDir } from "../utils/cache-dir.ts";
 import { execShell } from "../utils/exec.ts";
-import { findFiles } from "../utils/glob.ts";
+import { filterFiles, findFiles } from "../utils/glob.ts";
 import { verbose } from "../utils/logger.ts";
 import { prepareCommand, describeCommand } from "./command-template.ts";
 
@@ -45,9 +45,14 @@ export async function getFilesToScan(
   slug: string,
   _yamlPath?: string,
 ): Promise<string[]> {
+  // A prefilter only narrows the search, so its output still has to respect the
+  // pattern's include/exclude the same way the glob fallback does.
+  const applyPathRules = (files: string[]): string[] =>
+    filterFiles(config.path, files, pattern.include, pattern.exclude);
+
   if (pattern.prefilter) {
     verbose(`Using inline prefilter for "${pattern.name}"`);
-    return runPrefilterCommand(pattern.prefilter, config.path);
+    return applyPathRules(await runPrefilterCommand(pattern.prefilter, config.path));
   }
 
   if (_yamlPath) {
@@ -57,7 +62,7 @@ export async function getFilesToScan(
       const cachePath = cachedCommandPath(slug, pattern.name);
       const command = (await readFile(cachePath, "utf-8")).trim();
       verbose(`Using cached prefilter for "${pattern.name}"`);
-      return runPrefilterCommand(command, config.path);
+      return applyPathRules(await runPrefilterCommand(command, config.path));
     }
   }
 
