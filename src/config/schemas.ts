@@ -48,20 +48,30 @@ export type ScanSettings = z.infer<typeof ScanSettingsSchema>;
  */
 export type ResolvedRepoConfig = ScanSettings & { path: string; repo: string };
 
+// Structured output is generated in property order. `explanation` precedes
+// `is_violation` so the model reasons about a candidate before giving a verdict,
+// and can reject one that its own analysis clears.
 const FindingSchema = z.object({
   file: z.string(),
   line_start: z.number(),
   line_end: z.number(),
   snippet: z.string(),
+  explanation: z
+    .string()
+    .describe(
+      "Check the snippet against the detection rules, including every case they say not to flag, then state the conclusion.",
+    ),
+  is_violation: z
+    .boolean()
+    .describe(
+      "False when the explanation concludes this code conforms. Such entries are discarded.",
+    ),
   confidence: z.enum(["high", "medium", "low"]),
-  explanation: z.string(),
 });
 
 export const FindingsResponseSchema = z.object({
   findings: z.array(FindingSchema),
 });
-
-export type FindingsResponse = z.infer<typeof FindingsResponseSchema>;
 
 export const findingsJsonSchema = z.toJSONSchema(FindingsResponseSchema, {
   target: "draft-7",

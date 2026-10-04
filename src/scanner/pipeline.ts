@@ -3,12 +3,17 @@ import type { ResolvedRepoConfig, Pattern } from "../config/schemas.ts";
 import { exec } from "../utils/exec.ts";
 import { verbose, log } from "../utils/logger.ts";
 import { getFilesToScan } from "./prefilter.ts";
-import { analyzeWithClaude, readFilesForAnalysis, type FileContent } from "./claude.ts";
+import {
+  analyzeWithClaude,
+  promptFingerprint,
+  readFilesForAnalysis,
+  type FileContent,
+} from "./claude.ts";
 import { runDetectCommand } from "./lint-runner.ts";
 import {
   hydrateFinding,
   deduplicateFindings,
-  correctLineNumbers,
+  locateFinding,
   type ScanFinding,
   type RawFinding,
 } from "./result.ts";
@@ -65,7 +70,11 @@ async function scanWithLlm(
   model: string,
   files: string[],
 ): Promise<{ findings: RawFinding[]; contentsByRelPath: Map<string, string> }> {
-  const cache = new ScanCache(repoSlug(config.repo), pattern.name);
+  const cache = new ScanCache(
+    repoSlug(config.repo),
+    pattern.name,
+    promptFingerprint(pattern, model),
+  );
   await cache.load();
 
   const allFileContents = await readFilesForAnalysis(files, config.path);
@@ -100,16 +109,16 @@ async function scanWithLlm(
       batches.map((batch, i) =>
         limit(async () => {
           verbose(`  Processing batch ${i + 1}/${batches.length}`);
-          const response = await analyzeWithClaude(pattern, batch, model);
-          return { batch, response };
+          const findings = await analyzeWithClaude(pattern, batch, model);
+          return { batch, findings };
         }),
       ),
     );
 
-    for (const { batch, response } of results) {
+    for (const { batch, findings } of results) {
       for (const file of batch) {
         const hash = hashContent(file.content);
-        const fileFindings = response.findings.filter((f) => f.file === file.relativePath);
+        const fileFindings = findings.filter((f) => f.file === file.relativePath);
         cache.store(file.relativePath, hash, fileFindings);
         llmFindings.push(...fileFindings);
       }
@@ -148,11 +157,17 @@ async function scanPattern(
     if (files.length === 0) return [];
 
     const { findings, contentsByRelPath } = await scanWithLlm(pattern, config, model, files);
-    const corrected = findings.map((f) => {
+    const located = findings.flatMap((f) => {
       const content = contentsByRelPath.get(f.file);
-      return content ? correctLineNumbers(f, content) : f;
+      const finding = content === undefined ? null : locateFinding(f, content);
+      return finding ? [finding] : [];
     });
-    const hydrated = corrected.map((f) => hydrateFinding(f, pattern, config.repo, gitSha));
+    if (located.length < findings.length) {
+      verbose(
+        `  Dropped ${findings.length - located.length} findings whose snippet isn't in the file`,
+      );
+    }
+    const hydrated = located.map((f) => hydrateFinding(f, pattern, config.repo, gitSha));
     const deduped = deduplicateFindings(hydrated);
     log(`  Found ${deduped.length} violations (${elapsedSeconds()}s)`);
     return deduped;

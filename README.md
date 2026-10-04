@@ -84,8 +84,10 @@ $XDG_CACHE_HOME/sentry-refactor-tasks/    # if XDG_CACHE_HOME is set
 ~/.cache/sentry-refactor-tasks/           # otherwise
 ```
 
-Entries are namespaced per repo (`<owner>-<repo>/`). To force a clean re-scan,
-delete that directory.
+Entries are namespaced per repo (`<owner>-<repo>/`). A convention's cached
+results are discarded when its prompt (the convention's `detect` text and
+examples, or the scanner's own instructions) or the model changes, so editing a
+convention re-scans every file. To force a clean re-scan, delete that directory.
 
 ## Examples
 
