@@ -2,9 +2,10 @@ import { readFile } from "node:fs/promises";
 import { relative } from "node:path";
 import type { Pattern } from "../config/schemas.ts";
 import { findingsJsonSchema, FindingsResponseSchema } from "../config/schemas.ts";
-import type { FindingsResponse } from "../config/schemas.ts";
 import { runInference } from "../inference/index.ts";
 import { verbose } from "../utils/logger.ts";
+import type { RawFinding } from "./result.ts";
+import { hashContent } from "./scan-cache.ts";
 
 export interface FileContent {
   absolutePath: string;
@@ -43,7 +44,7 @@ function buildPrompt(pattern: Pattern, files: FileContent[]): string {
   }
 
   prompt += `\n\n**Source files to analyze:**\n\n${fileBlock}`;
-  prompt += `\n\nFor each violation found, report the file path (relative), line numbers, a code snippet, your confidence level, and a brief explanation. If no violations are found, return an empty findings array.`;
+  prompt += `\n\nFor each violation found, report the file path (relative), line numbers, a code snippet, a brief explanation, whether it is a violation, and your confidence level. If the explanation concludes the code is not a violation, set is_violation to false. If no violations are found, return an empty findings array.`;
 
   return prompt;
 }
@@ -52,11 +53,22 @@ function buildSystemPrompt(): string {
   return "You are a code reviewer checking for specific anti-patterns. Be precise: only flag actual violations, not similar-looking but correct code. When uncertain, prefer false negatives over false positives. Report confidence honestly.";
 }
 
+/**
+ * Identifies everything besides file contents that shapes a scan result, so a
+ * cached result is reused only when the same question was asked of the same
+ * model. Editing a convention or the prompt must re-scan unchanged files.
+ */
+export function promptFingerprint(pattern: Pattern, model: string): string {
+  return hashContent(
+    JSON.stringify([buildSystemPrompt(), buildPrompt(pattern, []), findingsJsonSchema, model]),
+  );
+}
+
 export async function analyzeWithClaude(
   pattern: Pattern,
   files: FileContent[],
   model: string,
-): Promise<FindingsResponse> {
+): Promise<RawFinding[]> {
   const prompt = buildPrompt(pattern, files);
   const systemPrompt = buildSystemPrompt();
 
@@ -76,5 +88,10 @@ export async function analyzeWithClaude(
     timeoutMs: 240_000,
   });
 
-  return FindingsResponseSchema.parse(JSON.parse(output));
+  const { findings } = FindingsResponseSchema.parse(JSON.parse(output));
+  const violations = findings.filter((f) => f.is_violation);
+  if (violations.length < findings.length) {
+    verbose(`  Discarded ${findings.length - violations.length} candidates judged not a violation`);
+  }
+  return violations.map(({ is_violation: _, ...finding }) => finding);
 }

@@ -11,7 +11,8 @@ interface CacheEntry {
 }
 
 interface CacheFile {
-  [relativePath: string]: CacheEntry;
+  prompt_fingerprint: string;
+  files: Record<string, CacheEntry>;
 }
 
 function cachePath(slug: string, patternName: string): string {
@@ -28,18 +29,30 @@ export function hashContent(content: string): string {
 }
 
 export class ScanCache {
-  private entries: CacheFile = {};
+  private entries: Record<string, CacheEntry> = {};
   private dirty = false;
   private filePath: string;
+  private promptFingerprint: string;
 
-  constructor(slug: string, patternName: string) {
+  /**
+   * `promptFingerprint` identifies the prompt and model the results came from.
+   * A cache written under a different one is discarded whole, since every
+   * entry in it answered a different question.
+   */
+  constructor(slug: string, patternName: string, promptFingerprint: string) {
     this.filePath = cachePath(slug, patternName);
+    this.promptFingerprint = promptFingerprint;
   }
 
   async load(): Promise<void> {
     try {
-      const raw = await readFile(this.filePath, "utf-8");
-      this.entries = JSON.parse(raw) as CacheFile;
+      const raw = JSON.parse(await readFile(this.filePath, "utf-8")) as Partial<CacheFile>;
+      if (raw.prompt_fingerprint !== this.promptFingerprint || !raw.files) {
+        verbose(`Scan cache was written for a different prompt or model; ignoring it`);
+        this.entries = {};
+        return;
+      }
+      this.entries = raw.files;
       verbose(`Loaded scan cache: ${Object.keys(this.entries).length} entries`);
     } catch {
       this.entries = {};
@@ -62,7 +75,8 @@ export class ScanCache {
   async save(): Promise<void> {
     if (!this.dirty) return;
     await mkdir(dirname(this.filePath), { recursive: true });
-    await writeFile(this.filePath, JSON.stringify(this.entries, null, 2), "utf-8");
+    const file: CacheFile = { prompt_fingerprint: this.promptFingerprint, files: this.entries };
+    await writeFile(this.filePath, JSON.stringify(file, null, 2), "utf-8");
     verbose(`Saved scan cache: ${Object.keys(this.entries).length} entries`);
   }
 }
