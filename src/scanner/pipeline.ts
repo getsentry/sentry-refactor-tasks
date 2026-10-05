@@ -24,11 +24,25 @@ async function resolveGitSha(repoPath: string): Promise<string> {
   return stdout.trim();
 }
 
-const MAX_FILES_PER_BATCH = 20;
 const APPROX_CHARS_PER_TOKEN = 4;
-const MAX_TOKENS_PER_BATCH = 80_000;
 
-function batchFiles(files: FileContent[]): FileContent[][] {
+interface BatchLimits {
+  files: number;
+  tokens: number;
+}
+
+const DEFAULT_BATCH_LIMITS: BatchLimits = { files: 20, tokens: 80_000 };
+
+// Haiku loses track of files in long batches and reports nothing for them, so
+// it gets smaller batches. Smaller batches cost more per scan, so models that
+// stay accurate at the default size keep it.
+const HAIKU_BATCH_LIMITS: BatchLimits = { files: 5, tokens: 25_000 };
+
+function batchLimitsFor(model: string): BatchLimits {
+  return model.toLowerCase().includes("haiku") ? HAIKU_BATCH_LIMITS : DEFAULT_BATCH_LIMITS;
+}
+
+function batchFiles(files: FileContent[], limits: BatchLimits): FileContent[][] {
   const batches: FileContent[][] = [];
   let currentBatch: FileContent[] = [];
   let currentTokens = 0;
@@ -37,8 +51,8 @@ function batchFiles(files: FileContent[]): FileContent[][] {
     const fileTokens = Math.ceil(file.content.length / APPROX_CHARS_PER_TOKEN);
 
     if (
-      currentBatch.length >= MAX_FILES_PER_BATCH ||
-      (currentTokens + fileTokens > MAX_TOKENS_PER_BATCH && currentBatch.length > 0)
+      currentBatch.length >= limits.files ||
+      (currentTokens + fileTokens > limits.tokens && currentBatch.length > 0)
     ) {
       batches.push(currentBatch);
       currentBatch = [];
@@ -70,11 +84,11 @@ async function scanWithLlm(
   model: string,
   files: string[],
 ): Promise<{ findings: RawFinding[]; contentsByRelPath: Map<string, string> }> {
-  const cache = new ScanCache(
-    repoSlug(config.repo),
-    pattern.name,
-    promptFingerprint(pattern, model),
-  );
+  const limits = batchLimitsFor(model);
+  // Batch size changes which files a model reports on, so a result cached under
+  // other limits may be missing findings and must not be reused.
+  const fingerprint = hashContent(JSON.stringify([promptFingerprint(pattern, model), limits]));
+  const cache = new ScanCache(repoSlug(config.repo), pattern.name, fingerprint);
   await cache.load();
 
   const allFileContents = await readFilesForAnalysis(files, config.path);
@@ -100,7 +114,7 @@ async function scanWithLlm(
   const llmFindings: RawFinding[] = [];
 
   if (uncachedFiles.length > 0) {
-    const batches = batchFiles(uncachedFiles);
+    const batches = batchFiles(uncachedFiles, limits);
     verbose(`  Split ${uncachedFiles.length} uncached files into ${batches.length} batches`);
 
     const limit = pLimit(config.scan_concurrency);

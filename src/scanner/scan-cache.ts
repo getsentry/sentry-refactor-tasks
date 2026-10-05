@@ -11,7 +11,7 @@ interface CacheEntry {
 }
 
 interface CacheFile {
-  prompt_fingerprint: string;
+  fingerprint: string;
   files: Record<string, CacheEntry>;
 }
 
@@ -32,23 +32,24 @@ export class ScanCache {
   private entries: Record<string, CacheEntry> = {};
   private dirty = false;
   private filePath: string;
-  private promptFingerprint: string;
+  private fingerprint: string;
 
   /**
-   * `promptFingerprint` identifies the prompt and model the results came from.
+   * `fingerprint` identifies everything besides file contents that shaped the
+   * results: the prompt, the model and how files were batched.
    * A cache written under a different one is discarded whole, since every
    * entry in it answered a different question.
    */
-  constructor(slug: string, patternName: string, promptFingerprint: string) {
+  constructor(slug: string, patternName: string, fingerprint: string) {
     this.filePath = cachePath(slug, patternName);
-    this.promptFingerprint = promptFingerprint;
+    this.fingerprint = fingerprint;
   }
 
   async load(): Promise<void> {
     try {
       const raw = JSON.parse(await readFile(this.filePath, "utf-8")) as Partial<CacheFile>;
-      if (raw.prompt_fingerprint !== this.promptFingerprint || !raw.files) {
-        verbose(`Scan cache was written for a different prompt or model; ignoring it`);
+      if (raw.fingerprint !== this.fingerprint || !raw.files) {
+        verbose(`Scan cache was written for a different prompt, model or batch size; ignoring it`);
         this.entries = {};
         return;
       }
@@ -75,7 +76,7 @@ export class ScanCache {
   async save(): Promise<void> {
     if (!this.dirty) return;
     await mkdir(dirname(this.filePath), { recursive: true });
-    const file: CacheFile = { prompt_fingerprint: this.promptFingerprint, files: this.entries };
+    const file: CacheFile = { fingerprint: this.fingerprint, files: this.entries };
     await writeFile(this.filePath, JSON.stringify(file, null, 2), "utf-8");
     verbose(`Saved scan cache: ${Object.keys(this.entries).length} entries`);
   }

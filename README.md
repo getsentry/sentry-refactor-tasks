@@ -86,8 +86,8 @@ $XDG_CACHE_HOME/sentry-refactor-tasks/    # if XDG_CACHE_HOME is set
 
 Entries are namespaced per repo (`<owner>-<repo>/`). A convention's cached
 results are discarded when its prompt (the convention's `detect` text and
-examples, or the scanner's own instructions) or the model changes, so editing a
-convention re-scans every file. To force a clean re-scan, delete that directory.
+examples, or the scanner's own instructions), the model, or the batch size
+changes, so editing a convention re-scans every file. To force a clean re-scan, delete that directory.
 
 ## Examples
 
