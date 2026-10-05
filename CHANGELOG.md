@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.2
+
+### Bug Fixes 🐛
+
+#### Scanner
+
+- Drop findings the model rejects or misattributes by @ryan953 in [#23](https://github.com/getsentry/sentry-refactor-tasks/pull/23)
+- Apply include and exclude globs to prefilter results by @sentry in [#22](https://github.com/getsentry/sentry-refactor-tasks/pull/22)
+
 ## 0.2.1
 
 ### Bug Fixes 🐛
