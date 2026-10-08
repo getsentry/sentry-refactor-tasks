@@ -26,6 +26,7 @@ for rep in 1 2; do
   run h55-f20-t50k-verbatim-r$rep --model $H55 --files 20 --tokens 50000 --verbatim-snippet
   run h55-ex10-f100-t50k-verbatim-r$rep --model $H55 --files 100 --tokens 50000 --excerpt 10 --verbatim-snippet
   run h55-ex25-f20-t50k-verbatim-r$rep --model $H55 --files 20 --tokens 50000 --excerpt 25 --verbatim-snippet
+  run h55-ex10-f20-t50k-verbatim-r$rep --model $H55 --files 20 --tokens 50000 --excerpt 10 --verbatim-snippet
 done
 wait
 echo "final done"
