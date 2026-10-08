@@ -23,7 +23,7 @@ flowchart TD
         SCAN -->|no| PREFILTER["getFilesToScan<br/>prefilter grep OR include/exclude globs<br/>→ candidate files"]
         PREFILTER --> CACHE1["ScanCache lookup by content hash"]
         CACHE1 -->|cached| RAW
-        CACHE1 -->|uncached| BATCH["batchFiles<br/>(≤20 files / ≤80k tokens)"]
+        CACHE1 -->|uncached| BATCH["excerptContent (if set)<br/>batchFiles<br/>(≤20 files / ≤80k tokens)"]
         BATCH --> CLAUDE["analyzeWithClaude<br/>claude --print + system prompt<br/>+ findings JSON schema"]
         CLAUDE --> CORRECT["correctLineNumbers<br/>(match snippet to source)"]
         CORRECT --> CACHE2["cache.store(hash → findings)"]

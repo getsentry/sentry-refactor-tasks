@@ -288,6 +288,9 @@ examples: # optional, sharpens LLM precision
 include: ["static/app/**/*.tsx"]
 exclude: ["**/*.test.*"]
 prefilter: "grep -rl -E 'extends (React\\.)?(Pure)?Component' {repo_path}/static/app/"
+excerpt: # optional: send only the lines around matches, not whole files
+  pattern: 'extends (React\.)?(Pure)?Component' # JavaScript regex, tested per line
+  context: 10 # lines on each side (default 10)
 # Lint path (bypasses the LLM): exact, fast, deterministic
 # detect_command: "bash {convention_dir}/no-derived-state.detect.sh {repo_path}"
 ```
@@ -297,6 +300,10 @@ Two detection paths:
 - **LLM path** — `prefilter` (a shell command) or `include`/`exclude` globs
   narrow the file set, then Claude judges each file against `detect`/`examples`.
   Results are cached by file content hash (see [Cache location](#cache-location)).
+  Set `excerpt` when a match plus a few surrounding lines is enough to judge a
+  violation: the model then sees only those windows (files with no match are
+  sent whole), which cuts tokens several-fold. Usually the `excerpt` regex
+  mirrors the `prefilter` grep.
 - **Lint path** — set `detect_command` to run a tool (e.g. ESLint) directly. No
   LLM is called and line numbers come straight from the tool.
 

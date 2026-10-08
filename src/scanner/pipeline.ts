@@ -9,6 +9,7 @@ import {
   readFilesForAnalysis,
   type FileContent,
 } from "./claude.ts";
+import { excerptContent } from "./excerpt.ts";
 import { runDetectCommand } from "./lint-runner.ts";
 import {
   hydrateFinding,
@@ -25,7 +26,10 @@ async function resolveGitSha(repoPath: string): Promise<string> {
 }
 
 const MAX_FILES_PER_BATCH = 20;
-const APPROX_CHARS_PER_TOKEN = 4;
+// Source code tokenizes far denser than prose (~2.4 chars/token measured on
+// TS/TSX), and Haiku 5.5 bills 5x for prompts of 100k+ tokens. Underestimating
+// here pushed batches past that line, where most of a scan's cost went.
+const APPROX_CHARS_PER_TOKEN = 2.4;
 const MAX_TOKENS_PER_BATCH = 80_000;
 
 function batchFiles(files: FileContent[]): FileContent[][] {
@@ -81,9 +85,12 @@ async function scanWithLlm(
 
   const cachedFindings: RawFinding[] = [];
   const uncachedFiles: FileContent[] = [];
+  // Keyed on the whole file, since the excerpt sent to the model is derived from it.
+  const hashes = new Map<string, string>();
 
   for (const file of allFileContents) {
     const hash = hashContent(file.content);
+    hashes.set(file.relativePath, hash);
     const cached = cache.lookup(file.relativePath, hash);
     if (cached) {
       cachedFindings.push(...cached);
@@ -100,7 +107,11 @@ async function scanWithLlm(
   const llmFindings: RawFinding[] = [];
 
   if (uncachedFiles.length > 0) {
-    const batches = batchFiles(uncachedFiles);
+    const { excerpt } = pattern;
+    const toSend = excerpt
+      ? uncachedFiles.map((f) => ({ ...f, content: excerptContent(f.content, excerpt) }))
+      : uncachedFiles;
+    const batches = batchFiles(toSend);
     verbose(`  Split ${uncachedFiles.length} uncached files into ${batches.length} batches`);
 
     const limit = pLimit(config.scan_concurrency);
@@ -117,9 +128,8 @@ async function scanWithLlm(
 
     for (const { batch, findings } of results) {
       for (const file of batch) {
-        const hash = hashContent(file.content);
         const fileFindings = findings.filter((f) => f.file === file.relativePath);
-        cache.store(file.relativePath, hash, fileFindings);
+        cache.store(file.relativePath, hashes.get(file.relativePath)!, fileFindings);
         llmFindings.push(...fileFindings);
       }
     }

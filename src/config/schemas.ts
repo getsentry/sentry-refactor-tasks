@@ -16,8 +16,25 @@ export const PatternSchema = z.object({
   include: z.array(z.string()).optional(),
   exclude: z.array(z.string()).optional(),
   prefilter: z.string().optional(),
+  // LLM path only: send the model just the lines around matches of `pattern`
+  // (a JavaScript regex tested per line), `context` lines on each side.
+  excerpt: z
+    .object({
+      pattern: z.string().refine(isValidRegex, "must be a valid JavaScript regular expression"),
+      context: z.number().int().nonnegative().default(10),
+    })
+    .optional(),
   detect_command: z.string().optional(),
 });
+
+function isValidRegex(source: string): boolean {
+  try {
+    new RegExp(source);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export type Pattern = z.infer<typeof PatternSchema>;
 
