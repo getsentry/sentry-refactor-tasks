@@ -1,14 +1,15 @@
 import pLimit from "p-limit";
-import type { ResolvedRepoConfig, Pattern } from "../config/schemas.ts";
+import type { ResolvedRepoConfig, Pattern, Search } from "../config/schemas.ts";
 import { exec } from "../utils/exec.ts";
 import { verbose, log } from "../utils/logger.ts";
-import { getFilesToScan } from "./prefilter.ts";
+import { findCandidateFiles } from "./search.ts";
 import {
   analyzeWithClaude,
   promptFingerprint,
   readFilesForAnalysis,
   type FileContent,
 } from "./claude.ts";
+import { excerptContent } from "./excerpt.ts";
 import { runDetectCommand } from "./lint-runner.ts";
 import {
   hydrateFinding,
@@ -25,7 +26,10 @@ async function resolveGitSha(repoPath: string): Promise<string> {
 }
 
 const MAX_FILES_PER_BATCH = 20;
-const APPROX_CHARS_PER_TOKEN = 4;
+// Source code tokenizes far denser than prose (~2.4 chars/token measured on
+// TS/TSX), and Haiku 5.5 bills 5x for prompts of 100k+ tokens. Underestimating
+// here pushed batches past that line, where most of a scan's cost went.
+const APPROX_CHARS_PER_TOKEN = 2.4;
 const MAX_TOKENS_PER_BATCH = 80_000;
 
 function batchFiles(files: FileContent[]): FileContent[][] {
@@ -66,6 +70,7 @@ async function scanWithDetectCommand(
 
 async function scanWithLlm(
   pattern: Pattern,
+  search: Search,
   config: ResolvedRepoConfig,
   model: string,
   files: string[],
@@ -81,9 +86,12 @@ async function scanWithLlm(
 
   const cachedFindings: RawFinding[] = [];
   const uncachedFiles: FileContent[] = [];
+  // Keyed on the whole file, since the excerpt sent to the model is derived from it.
+  const hashes = new Map<string, string>();
 
   for (const file of allFileContents) {
     const hash = hashContent(file.content);
+    hashes.set(file.relativePath, hash);
     const cached = cache.lookup(file.relativePath, hash);
     if (cached) {
       cachedFindings.push(...cached);
@@ -100,7 +108,12 @@ async function scanWithLlm(
   const llmFindings: RawFinding[] = [];
 
   if (uncachedFiles.length > 0) {
-    const batches = batchFiles(uncachedFiles);
+    const { match, excerpt } = search;
+    const toSend =
+      excerpt === undefined
+        ? uncachedFiles
+        : uncachedFiles.map((f) => ({ ...f, content: excerptContent(f.content, match, excerpt) }));
+    const batches = batchFiles(toSend);
     verbose(`  Split ${uncachedFiles.length} uncached files into ${batches.length} batches`);
 
     const limit = pLimit(config.scan_concurrency);
@@ -117,9 +130,8 @@ async function scanWithLlm(
 
     for (const { batch, findings } of results) {
       for (const file of batch) {
-        const hash = hashContent(file.content);
         const fileFindings = findings.filter((f) => f.file === file.relativePath);
-        cache.store(file.relativePath, hash, fileFindings);
+        cache.store(file.relativePath, hashes.get(file.relativePath)!, fileFindings);
         llmFindings.push(...fileFindings);
       }
     }
@@ -138,14 +150,14 @@ async function scanPattern(
 ): Promise<ScanFinding[]> {
   const model = options.model ?? config.default_model;
   const gitSha = await resolveGitSha(config.path);
-  const usesDetectCommand = Boolean(pattern.detect_command);
+  const { search } = pattern;
   const startTime = performance.now();
   const elapsedSeconds = () => ((performance.now() - startTime) / 1000).toFixed(1);
 
   log(`Scanning for "${pattern.name}" in ${config.repo} @ ${gitSha.slice(0, 8)}...`);
 
-  if (!usesDetectCommand) {
-    const files = await getFilesToScan(pattern, config, repoSlug(config.repo));
+  if (search) {
+    const files = await findCandidateFiles(search, config.path);
     log(`  Found ${files.length} candidate files`);
 
     if (options.dryRun) {
@@ -156,7 +168,13 @@ async function scanPattern(
 
     if (files.length === 0) return [];
 
-    const { findings, contentsByRelPath } = await scanWithLlm(pattern, config, model, files);
+    const { findings, contentsByRelPath } = await scanWithLlm(
+      pattern,
+      search,
+      config,
+      model,
+      files,
+    );
     const located = findings.flatMap((f) => {
       const content = contentsByRelPath.get(f.file);
       const finding = content === undefined ? null : locateFinding(f, content);

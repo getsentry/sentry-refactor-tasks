@@ -45,6 +45,10 @@ function buildPrompt(pattern: Pattern, files: FileContent[]): string {
 
   prompt += `\n\n**Source files to analyze:**\n\n${fileBlock}`;
   prompt += `\n\nFor each violation found, report the file path (relative), line numbers, a code snippet, a brief explanation, whether it is a violation, and your confidence level. If the explanation concludes the code is not a violation, set is_violation to false. If no violations are found, return an empty findings array.`;
+  // Findings are pinned to the file by matching snippet lines exactly. Without
+  // this, models collapse multi-line code into one abbreviated line that
+  // matches nothing, and most correct findings were dropped as unlocatable.
+  prompt += `\n\nCopy each \`snippet\` verbatim from the source file: the first lines of the flagged code exactly as written, with the original line breaks. Do not reformat, join lines, or abbreviate with \`...\`.`;
 
   return prompt;
 }
@@ -60,7 +64,14 @@ function buildSystemPrompt(): string {
  */
 export function promptFingerprint(pattern: Pattern, model: string): string {
   return hashContent(
-    JSON.stringify([buildSystemPrompt(), buildPrompt(pattern, []), findingsJsonSchema, model]),
+    JSON.stringify([
+      buildSystemPrompt(),
+      buildPrompt(pattern, []),
+      findingsJsonSchema,
+      model,
+      pattern.search?.match ?? null,
+      pattern.search?.excerpt ?? null,
+    ]),
   );
 }
 

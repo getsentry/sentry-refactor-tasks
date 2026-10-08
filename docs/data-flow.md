@@ -6,7 +6,7 @@ ultimately an automated fix PR.
 ```mermaid
 flowchart TD
     subgraph authoring["1. Authoring"]
-        YAML["Convention YAML<br/>&lt;repo&gt;/.sentry-refactor-tasks/conventions/*.yaml<br/>(why, detect, fix, examples,<br/>prefilter / detect_command)"]
+        YAML["Convention YAML<br/>&lt;repo&gt;/.sentry-refactor-tasks/conventions/*.yaml<br/>(why, detect, fix, examples,<br/>search / detect_command)"]
         VALIDATE["loadPattern → PatternSchema (Zod)<br/>validate command"]
         YAML --> VALIDATE
     end
@@ -20,10 +20,10 @@ flowchart TD
         SCAN -->|yes| DETECT["runDetectCommand<br/>e.g. eslint-json-runner<br/>(no LLM, exact line numbers)"]
 
         %% LLM path
-        SCAN -->|no| PREFILTER["getFilesToScan<br/>prefilter grep OR include/exclude globs<br/>→ candidate files"]
+        SCAN -->|no| PREFILTER["findCandidateFiles<br/>include/exclude globs + match regex<br/>→ candidate files"]
         PREFILTER --> CACHE1["ScanCache lookup by content hash"]
         CACHE1 -->|cached| RAW
-        CACHE1 -->|uncached| BATCH["batchFiles<br/>(≤20 files / ≤80k tokens)"]
+        CACHE1 -->|uncached| BATCH["excerptContent (if search.excerpt)<br/>batchFiles<br/>(≤20 files / ≤80k tokens)"]
         BATCH --> CLAUDE["analyzeWithClaude<br/>claude --print + system prompt<br/>+ findings JSON schema"]
         CLAUDE --> CORRECT["correctLineNumbers<br/>(match snippet to source)"]
         CORRECT --> CACHE2["cache.store(hash → findings)"]
@@ -63,10 +63,10 @@ flowchart TD
 
 - **Two detection paths.** A convention either bypasses the LLM via
   `detect_command` (e.g. an ESLint rule — fast, exact line numbers) or uses the
-  LLM path: a `prefilter` grep (or `include`/`exclude` globs) narrows candidate
+  LLM path: `search` (globs plus a per-line `match` regex) picks candidate
   files, then `analyzeWithClaude` judges each batch against the convention's
-  `detect`/`examples`. `no-class-components` uses the LLM path with a grep
-  prefilter for `extends (React.)?(Pure)?Component`.
+  `detect`/`examples`. `no-class-components` uses the LLM path, matching
+  `extends (React.)?(Pure)?Component`.
 - **Caching.** Findings are cached by file content hash, so re-scans only call
   the LLM on changed files.
 - **Hydration** merges the per-file `RawFinding` (from LLM or lint tool) with the

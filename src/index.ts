@@ -31,15 +31,6 @@ program
   });
 
 program
-  .command("generate-commands")
-  .description("Use LLM to generate prefilter shell commands")
-  .option(...CWD_OPTION)
-  .action(async (opts: { cwd?: string }) => {
-    const { generateCommandsCommand } = await import("./commands/generate-commands.ts");
-    await generateCommandsCommand(opts);
-  });
-
-program
   .command("scan")
   .description("Run conventions against the repo")
   .argument("[pattern]", "specific convention name (or all)")
