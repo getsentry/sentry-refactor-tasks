@@ -1,8 +1,8 @@
 import pLimit from "p-limit";
-import type { ResolvedRepoConfig, Pattern } from "../config/schemas.ts";
+import type { ResolvedRepoConfig, Pattern, Search } from "../config/schemas.ts";
 import { exec } from "../utils/exec.ts";
 import { verbose, log } from "../utils/logger.ts";
-import { getFilesToScan } from "./prefilter.ts";
+import { findCandidateFiles } from "./search.ts";
 import {
   analyzeWithClaude,
   promptFingerprint,
@@ -70,6 +70,7 @@ async function scanWithDetectCommand(
 
 async function scanWithLlm(
   pattern: Pattern,
+  search: Search,
   config: ResolvedRepoConfig,
   model: string,
   files: string[],
@@ -107,10 +108,11 @@ async function scanWithLlm(
   const llmFindings: RawFinding[] = [];
 
   if (uncachedFiles.length > 0) {
-    const { excerpt } = pattern;
-    const toSend = excerpt
-      ? uncachedFiles.map((f) => ({ ...f, content: excerptContent(f.content, excerpt) }))
-      : uncachedFiles;
+    const { match, excerpt } = search;
+    const toSend =
+      excerpt === undefined
+        ? uncachedFiles
+        : uncachedFiles.map((f) => ({ ...f, content: excerptContent(f.content, match, excerpt) }));
     const batches = batchFiles(toSend);
     verbose(`  Split ${uncachedFiles.length} uncached files into ${batches.length} batches`);
 
@@ -148,14 +150,14 @@ async function scanPattern(
 ): Promise<ScanFinding[]> {
   const model = options.model ?? config.default_model;
   const gitSha = await resolveGitSha(config.path);
-  const usesDetectCommand = Boolean(pattern.detect_command);
+  const { search } = pattern;
   const startTime = performance.now();
   const elapsedSeconds = () => ((performance.now() - startTime) / 1000).toFixed(1);
 
   log(`Scanning for "${pattern.name}" in ${config.repo} @ ${gitSha.slice(0, 8)}...`);
 
-  if (!usesDetectCommand) {
-    const files = await getFilesToScan(pattern, config, repoSlug(config.repo));
+  if (search) {
+    const files = await findCandidateFiles(search, config.path);
     log(`  Found ${files.length} candidate files`);
 
     if (options.dryRun) {
@@ -166,7 +168,13 @@ async function scanPattern(
 
     if (files.length === 0) return [];
 
-    const { findings, contentsByRelPath } = await scanWithLlm(pattern, config, model, files);
+    const { findings, contentsByRelPath } = await scanWithLlm(
+      pattern,
+      search,
+      config,
+      model,
+      files,
+    );
     const located = findings.flatMap((f) => {
       const content = contentsByRelPath.get(f.file);
       const finding = content === undefined ? null : locateFinding(f, content);

@@ -69,7 +69,8 @@ export function promptFingerprint(pattern: Pattern, model: string): string {
       buildPrompt(pattern, []),
       findingsJsonSchema,
       model,
-      pattern.excerpt ?? null,
+      pattern.search?.match ?? null,
+      pattern.search?.excerpt ?? null,
     ]),
   );
 }
