@@ -12,6 +12,60 @@ scans the working tree in place. No conventions ship with this package.
 See [docs/data-flow.md](docs/data-flow.md) for an end-to-end diagram
 (convention → issue → Seer PR).
 
+## How it fits together
+
+Conventions are identified from PR comments and Sentry issues, then captured
+as skills. The same skills drive two loops: prevention, which judges each PR's
+patch in CI, and fixes, which scan the existing codebase on a schedule and hand
+each violation to Seer as a Sentry issue. This CLI is the fixes loop.
+
+```text
+                           +================= IDENTIFY ==================+
+                           |                                             |
+                           |    +-------------+      +---------------+   |
+                           |    | PR comments |      | Sentry issues |   | ..... seer detected?
+                           |    +------+------+      +-------+-------+   |
+                           |           |                     |           |
+                           |           +---------+-----------+           |
+                           +=====================|=======================+
+                                                 |
+                                                 v
+                                          +-------------+
+                                          |   SKILLS    |   ..... yaml / sentry db
+                                          +------+------+
+                                                 |
+                             +-------------------+-------------------+
+                             |                                       |
+                             v                                       v
+ PR checks .....  +===== PREVENTION =====+                +======= FIXES ========+
+                  |                      |                |                      |
+                  |   .--------------.   |                |   .--------------.   |
+                  |   |      CI      |   |                |   |     CRON     |   |
+                  |   '------+-------'   |                |   '------+-------'   |
+                  |          |           |                |          |           |
+                  |          v           |                |          v           |
+                  |   +--------------+   |                |   +--------------+   |
+                  |   |    PATCH     |   |                |   |  PREFILTER   |   |  ..... grep
+                  |   +------+-------+   |                |   +------+-------+   |
+                  |          |           |                |          |           |
+                  |          v           |                |          v           |
+                  |   +--------------+   |                |   +--------------+   |
+                  |   |  LLM JUDGE   |   |                |   |  LLM JUDGE   |   |
+                  |   +------+-------+   |                |   +------+-------+   |
+                  |          |           |                |          |           |
+                  |          v           |                |          v           |
+                  |   +--------------+   |                |   +--------------+   |
+                  |   | ACCEPT/BLOCK |   |                |   |     TODO     |   |  ..... sentry issue
+                  |   +--------------+   |                |   +------+-------+   |
+                  |                      |                |          |           |
+                  +======================+                |          v           |
+                                                          |   +--------------+   |
+                                                          |   | SEER AUTOFIX |   |
+                                                          |   +--------------+   |
+                                                          |                      |
+                                                          +======================+
+```
+
 ## Prerequisites
 
 - Node v24+ (the CLI runs TypeScript directly — Node strips types natively)
