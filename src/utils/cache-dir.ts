@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 /**
- * Root directory for all cached data (scan results, generated prefilter commands).
+ * Root directory for all cached data (scan results).
  *
  * Resolves to a stable, user-level location so the cache survives across runs —
  * including `npx`, where the package itself lives in an ephemeral install dir.

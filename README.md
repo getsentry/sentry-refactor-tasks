@@ -113,7 +113,6 @@ up to find a `.sentry-refactor-tasks/` folder).
 | `scan [pattern]`        | Run conventions against the repo and print findings |
 | `scan-and-report`       | Scan and send findings to Sentry in one step        |
 | `report <results-file>` | Send a saved findings JSON to Sentry                |
-| `generate-commands`     | Use the LLM to generate prefilter shell commands    |
 
 Common options:
 
@@ -129,8 +128,7 @@ Common options:
 
 ## Cache location
 
-Scan results (keyed by file content hash) and generated prefilter commands are
-cached on disk at a stable, user-level path so they persist across runs —
+Scan results (keyed by file content hash) are cached on disk at a stable, user-level path so they persist across runs —
 including `npx`, whose package install is ephemeral:
 
 ```
@@ -283,24 +281,30 @@ fix: | # remediation guidance (Seer reads this)
 examples: # optional, sharpens LLM precision
   bad: ["class Foo extends Component {}"]
   good: ["function Foo() {}"]
-# --- choose ONE detection path ---
-# LLM path: narrow candidates, then let the model judge them
-include: ["static/app/**/*.tsx"]
-exclude: ["**/*.test.*"]
-prefilter: "grep -rl -E 'extends (React\\.)?(Pure)?Component' {repo_path}/static/app/"
+# --- set exactly ONE of `search` or `detect_command` ---
+# LLM path: find candidate files, then let the model judge them
+search:
+  match: 'extends (React\.)?(Pure)?Component' # required: JavaScript regex, tested per line
+  include: ["static/app/**/*.tsx"] # strongly recommended: globs to search
+  exclude: ["**/*.test.*"]
+  excerpt: 10 # optional: send matching lines ±10, not whole files
 # Lint path (bypasses the LLM): exact, fast, deterministic
 # detect_command: "bash {convention_dir}/no-derived-state.detect.sh {repo_path}"
 ```
 
 Two detection paths:
 
-- **LLM path** — `prefilter` (a shell command) or `include`/`exclude` globs
-  narrow the file set, then Claude judges each file against `detect`/`examples`.
-  Results are cached by file content hash (see [Cache location](#cache-location)).
+- **LLM path** — `search` picks the files: every file under `include` (minus
+  `exclude`) with at least one line matching `match`. Claude then judges each
+  file against `detect`/`examples`. Results are cached by file content hash
+  (see [Cache location](#cache-location)). Without `include`, every
+  `.ts/.tsx/.js/.jsx` file outside `node_modules` is searched. Set `excerpt` when
+  a match plus a few surrounding lines is enough to judge a violation: the model
+  then sees only those windows, which cuts tokens several-fold.
 - **Lint path** — set `detect_command` to run a tool (e.g. ESLint) directly. No
   LLM is called and line numbers come straight from the tool.
 
-In both shell commands these tokens are substituted: `{repo_path}` (the repo
+In `detect_command` these tokens are substituted: `{repo_path}` (the repo
 root being scanned) and `{convention_dir}` (the repo's
 `.sentry-refactor-tasks/conventions/` folder — use it to reference sidecar
 scripts/configs that live next to the YAML).
@@ -317,19 +321,8 @@ splits into two arguments.
 
 ### Detection output (stdout shape)
 
-The two paths read different things from the command's **stdout**. In both
-cases, write any install/progress noise to **stderr** (e.g. `pnpm install …
-1>&2`) so it doesn't corrupt stdout.
-
-**`prefilter` → a newline-separated list of absolute file paths.** Each line is
-one candidate file the LLM will then judge. Blank lines are ignored; no output
-(or a non-zero exit) means "no candidates". This is exactly what
-`grep -rl … {repo_path}/static/app/` prints:
-
-```text
-/abs/checkout/static/app/views/foo.tsx
-/abs/checkout/static/app/components/bar.tsx
-```
+The scanner reads the command's **stdout**, so write any install/progress noise
+to **stderr** (e.g. `pnpm install … 1>&2`) so it doesn't corrupt it.
 
 **`detect_command` → a JSON array of per-file results.** The LLM is skipped
 entirely. The scanner turns _every_ message into a finding (so emit only the

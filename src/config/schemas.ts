@@ -1,23 +1,52 @@
 import { z } from "zod";
 
-export const PatternSchema = z.object({
-  name: z.string().regex(/^[a-z0-9-]+$/),
-  severity: z.enum(["error", "warning", "info"]).default("warning"),
-  tags: z.array(z.string()).default([]),
-  why: z.string(),
-  detect: z.string(),
-  fix: z.string(),
-  examples: z
-    .object({
-      bad: z.array(z.string()).default([]),
-      good: z.array(z.string()).default([]),
-    })
-    .optional(),
+/**
+ * Which files the LLM path reads, and how much of each it sends. `match` is a
+ * JavaScript regex tested line by line: a file is a candidate when any line
+ * matches, and with `excerpt` set the model sees only the matching lines plus
+ * that many lines on each side, instead of the whole file.
+ */
+export const SearchSchema = z.object({
+  match: z.string().refine(isValidRegex, "must be a valid JavaScript regular expression"),
   include: z.array(z.string()).optional(),
   exclude: z.array(z.string()).optional(),
-  prefilter: z.string().optional(),
-  detect_command: z.string().optional(),
+  excerpt: z.number().int().nonnegative().optional(),
 });
+
+export type Search = z.infer<typeof SearchSchema>;
+
+export const PatternSchema = z
+  .object({
+    name: z.string().regex(/^[a-z0-9-]+$/),
+    severity: z.enum(["error", "warning", "info"]).default("warning"),
+    tags: z.array(z.string()).default([]),
+    why: z.string(),
+    detect: z.string(),
+    fix: z.string(),
+    examples: z
+      .object({
+        bad: z.array(z.string()).default([]),
+        good: z.array(z.string()).default([]),
+      })
+      .optional(),
+    search: SearchSchema.optional(),
+    detect_command: z.string().optional(),
+  })
+  // Unknown keys are dropped, so a convention with neither path (e.g. a
+  // misspelled `search`) would otherwise load and silently scan nothing.
+  .refine((p) => Boolean(p.search) !== Boolean(p.detect_command), {
+    message:
+      "Set exactly one of `search` (LLM path: `{match, include, exclude, excerpt}`) or `detect_command`. Top-level `prefilter`, `include` and `exclude` are no longer read.",
+  });
+
+function isValidRegex(source: string): boolean {
+  try {
+    new RegExp(source);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export type Pattern = z.infer<typeof PatternSchema>;
 
