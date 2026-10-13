@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.0.0
+
+### Breaking Changes 🛠
+
+- (config) Search conventions in-process and cut LLM scan cost by @ryan953 in [#26](https://github.com/getsentry/sentry-refactor-tasks/pull/26)
+
+### Bug Fixes 🐛
+
+#### Scanner
+
+- Drop findings the model rejects or misattributes by @ryan953 in [#23](https://github.com/getsentry/sentry-refactor-tasks/pull/23)
+- Apply include and exclude globs to prefilter results by @sentry in [#22](https://github.com/getsentry/sentry-refactor-tasks/pull/22)
+
+### Documentation 📚
+
+- (readme) Add flowchart of the identify, prevent, and fix loops by @ryan953 in [#25](https://github.com/getsentry/sentry-refactor-tasks/pull/25)
+
 ## 0.2.1
 
 ### Bug Fixes 🐛
